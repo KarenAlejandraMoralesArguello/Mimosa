@@ -29,7 +29,7 @@ export function Hero() {
           </h1>
 
           <p className="text-xl md:text-2xl text-white/90 mb-4 max-w-3xl mx-auto">
-            Conectamos creadores de contenido con marcas
+            Conectamos creadores de contenido con empresas
           </p>
 
           <p className="text-lg md:text-xl text-white/80 mb-12 max-w-2xl mx-auto">
