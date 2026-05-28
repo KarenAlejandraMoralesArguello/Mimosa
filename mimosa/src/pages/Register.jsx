@@ -2,15 +2,22 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import Logo from '../components/Logo.jsx'
+import Icon from '../components/Icon.jsx'
 import { PLANS } from '../data/mock.js'
+import { registerAccount } from '../data/accounts.js'
 
 export default function Register() {
-  const [params] = useSearchParams()
-  const initialRole = params.get('rol') === 'creadora' ? 'creator' : params.get('rol') === 'marca' ? 'brand' : null
-  const [role, setRole] = useState(initialRole)
+  // El rol se DERIVA de la URL (no de useState), así el formulario se
+  // re-renderiza al instante cuando cambias entre marca y creadora.
+  const [params, setParams] = useSearchParams()
+  const rol = params.get('rol')
+  const role = rol === 'creadora' ? 'creator' : rol === 'marca' ? 'brand' : null
+  const pick = (r) => setParams({ rol: r })
 
-  if (!role) return <RolePicker onPick={setRole} />
-  return role === 'brand' ? <BrandForm /> : <CreatorForm />
+  if (!role) return <RolePicker onPick={pick} />
+  return role === 'brand'
+    ? <BrandForm onSwitch={() => pick('creadora')} />
+    : <CreatorForm onSwitch={() => pick('marca')} />
 }
 
 function RolePicker({ onPick }) {
@@ -22,14 +29,14 @@ function RolePicker({ onPick }) {
           <h1>Crea tu cuenta</h1>
           <p className="text-muted">¿Cómo quieres usar Mimosa Colab Club?</p>
           <div className="role-cards">
-            <button className="role-card" style={{ '--g': 'var(--grad-rosa-violeta)' }} onClick={() => onPick('brand')}>
-              <span className="role-emoji">🏢</span>
+            <button className="role-card" style={{ '--g': 'var(--grad-rosa-violeta)' }} onClick={() => onPick('marca')}>
+              <span className="role-icon"><Icon name="building" size={28} color="#fff" /></span>
               <h3>Soy una marca</h3>
               <p>Quiero publicar campañas y reclutar creadoras de UGC.</p>
               <span className="role-go">Continuar →</span>
             </button>
-            <button className="role-card" style={{ '--g': 'var(--grad-solar-rosa)' }} onClick={() => onPick('creator')}>
-              <span className="role-emoji">🎨</span>
+            <button className="role-card" style={{ '--g': 'var(--grad-solar-rosa)' }} onClick={() => onPick('creadora')}>
+              <span className="role-icon"><Icon name="palette" size={28} color="#fff" /></span>
               <h3>Soy creadora</h3>
               <p>Quiero aplicar a campañas y cobrar por mi contenido.</p>
               <span className="role-go">Continuar →</span>
@@ -42,7 +49,7 @@ function RolePicker({ onPick }) {
   )
 }
 
-function BrandForm() {
+function BrandForm({ onSwitch }) {
   const { login } = useAuth()
   const navigate = useNavigate()
   const [plan, setPlan] = useState('starter')
@@ -51,7 +58,10 @@ function BrandForm() {
 
   const submit = (e) => {
     e.preventDefault()
-    login({ role: 'brand', name: form.company || 'Mi Marca', email: form.email || 'marca@demo.com', plan })
+    // El rol 'brand' queda guardado en la cuenta (futura tabla `perfiles`).
+    const account = { email: form.email || 'marca@demo.com', role: 'brand', name: form.company || 'Mi Marca', plan }
+    registerAccount(account)
+    login(account)
     navigate('/marca')
   }
 
@@ -64,11 +74,11 @@ function BrandForm() {
         </div>
         <div className="field">
           <label>Correo corporativo</label>
-          <input className="input" type="email" required value={form.email} onChange={set('email')} placeholder="hola@marca.com" />
+          <input className="input" type="email" autoComplete="email" required value={form.email} onChange={set('email')} placeholder="hola@marca.com" />
         </div>
         <div className="field">
           <label>Contraseña</label>
-          <input className="input" type="password" required value={form.password} onChange={set('password')} placeholder="••••••••" />
+          <input className="input" type="password" autoComplete="new-password" required value={form.password} onChange={set('password')} placeholder="••••••••" />
         </div>
 
         <div className="field">
@@ -87,13 +97,13 @@ function BrandForm() {
         </div>
 
         <button className="btn btn-grad btn-block" type="submit">Crear cuenta de marca</button>
-        <p className="auth-alt">¿Eres creadora? <Link to="/registro?rol=creadora">Regístrate aquí</Link></p>
+        <p className="auth-alt">¿Eres creadora? <button type="button" className="link-btn" onClick={onSwitch}>Regístrate aquí</button></p>
       </form>
     </AuthScaffold>
   )
 }
 
-function CreatorForm() {
+function CreatorForm({ onSwitch }) {
   const { login } = useAuth()
   const navigate = useNavigate()
   const [form, setForm] = useState({ name: '', email: '', password: '', portfolio: '' })
@@ -107,7 +117,10 @@ function CreatorForm() {
       setErr('Ingresa un enlace válido a tu portafolio (Behance, Canva, Drive, TikTok…).')
       return
     }
-    login({ role: 'creator', name: form.name || 'Nueva Creadora', email: form.email || 'creadora@demo.com', status: 'en_validacion', portfolio: form.portfolio })
+    // El rol 'creator' y el estado "en validación" quedan en la cuenta.
+    const account = { email: form.email || 'creadora@demo.com', role: 'creator', name: form.name || 'Nueva Creadora', status: 'en_validacion', portfolio: form.portfolio }
+    registerAccount(account)
+    login(account)
     navigate('/creadora')
   }
 
@@ -120,11 +133,11 @@ function CreatorForm() {
         </div>
         <div className="field">
           <label>Correo electrónico</label>
-          <input className="input" type="email" required value={form.email} onChange={set('email')} placeholder="tu@correo.com" />
+          <input className="input" type="email" autoComplete="email" required value={form.email} onChange={set('email')} placeholder="tu@correo.com" />
         </div>
         <div className="field">
           <label>Contraseña</label>
-          <input className="input" type="password" required value={form.password} onChange={set('password')} placeholder="••••••••" />
+          <input className="input" type="password" autoComplete="new-password" required value={form.password} onChange={set('password')} placeholder="••••••••" />
         </div>
         <div className="field">
           <label>Enlace a tu portafolio externo *</label>
@@ -137,7 +150,7 @@ function CreatorForm() {
         </div>
 
         <button className="btn btn-grad btn-block" type="submit">Enviar para validación</button>
-        <p className="auth-alt">¿Eres marca? <Link to="/registro?rol=marca">Regístrate aquí</Link></p>
+        <p className="auth-alt">¿Eres marca? <button type="button" className="link-btn" onClick={onSwitch}>Regístrate aquí</button></p>
       </form>
     </AuthScaffold>
   )

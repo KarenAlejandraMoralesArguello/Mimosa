@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import Footer from '../components/Footer.jsx'
+import Icon from '../components/Icon.jsx'
 import { PLANS } from '../data/mock.js'
 
 const STEPS = [
@@ -11,10 +12,17 @@ const STEPS = [
 ]
 
 const FEATURES = [
-  { icon: '🛡️', title: 'Pagos blindados en escrow', text: 'El dinero queda en garantía en Stripe hasta que apruebas el contenido. Cero informalidad.' },
-  { icon: '✅', title: 'Perfiles validados a mano', text: 'Cada creadora pasa por auditoría humana de portafolio antes de entrar al marketplace.' },
-  { icon: '💬', title: 'Negociación en un solo lugar', text: 'Chat, propuestas, órdenes y entregables viven dentro de la plataforma. Sin caos en DMs.' },
-  { icon: '⚖️', title: 'Arbitraje y control de calidad', text: 'Hasta 2 rondas de correcciones y panel de arbitraje para resolver disputas con justicia.' },
+  { icon: 'shield', title: 'Pagos blindados en escrow', text: 'El dinero queda en garantía en Stripe hasta que apruebas el contenido. Cero informalidad.' },
+  { icon: 'check', title: 'Perfiles validados a mano', text: 'Cada creadora pasa por auditoría humana de portafolio antes de entrar al marketplace.' },
+  { icon: 'chat', title: 'Negociación en un solo lugar', text: 'Chat, propuestas, órdenes y entregables viven dentro de la plataforma. Sin caos en DMs.' },
+  { icon: 'scale', title: 'Arbitraje y control de calidad', text: 'Hasta 2 rondas de correcciones y panel de arbitraje para resolver disputas con justicia.' },
+]
+
+const CREATOR_PERKS = [
+  { icon: 'palette', text: 'Validación de portafolio con feedback constructivo' },
+  { icon: 'coin', text: 'Dispersión automática a tu cuenta bancaria' },
+  { icon: 'lock', text: 'Datos bancarios encriptados y protegidos con RLS' },
+  { icon: 'clock', text: 'Reglas claras: máximo 2 rondas de correcciones' },
 ]
 
 export default function Landing() {
@@ -47,7 +55,7 @@ export default function Landing() {
             <div className="float-card fc-1">
               <span className="badge badge-verde"><span className="dot" /> Match confirmado</span>
               <strong>Valentina Ríos</strong>
-              <span className="text-muted">@valeugc · 4.9 ★</span>
+              <span className="text-muted rating-inline">@valeugc · <Icon name="star" size={12} color="var(--solar)" /> 4.9</span>
             </div>
             <div className="float-card fc-2">
               <span className="badge badge-azul"><span className="dot" /> Escrow activo</span>
@@ -93,7 +101,7 @@ export default function Landing() {
           <div className="grid features-grid">
             {FEATURES.map((f) => (
               <div key={f.title} className="card card-pad feature-card">
-                <span className="feature-icon">{f.icon}</span>
+                <span className="feature-icon"><Icon name={f.icon} size={26} color="#fff" /></span>
                 <h3>{f.title}</h3>
                 <p className="text-muted">{f.text}</p>
               </div>
@@ -144,10 +152,9 @@ export default function Landing() {
             <Link to="/registro?rol=creadora" className="btn btn-light">Crear mi perfil de creadora</Link>
           </div>
           <ul className="creators-points">
-            <li><span>🎨</span> Validación de portafolio con feedback constructivo</li>
-            <li><span>💸</span> Dispersión automática a tu cuenta bancaria</li>
-            <li><span>🔒</span> Datos bancarios encriptados y protegidos con RLS</li>
-            <li><span>⏱️</span> Reglas claras: máximo 2 rondas de correcciones</li>
+            {CREATOR_PERKS.map((p) => (
+              <li key={p.text}><span className="cp-ic"><Icon name={p.icon} size={18} color="#fff" /></span> {p.text}</li>
+            ))}
           </ul>
         </div>
       </section>

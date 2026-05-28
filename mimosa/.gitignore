@@ -1,17 +1,5 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-
-# Entorno de desarrollo
-node_modules/
-dist/
-dist-ssr/
+node_modules
+dist
+.DS_Store
 *.local
 .env
-.env.*
-
-# Editores y SO
-.vscode/
-.idea/
-.DS_Store

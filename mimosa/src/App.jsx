@@ -3,7 +3,13 @@ import { useAuth } from './context/AuthContext.jsx'
 import WhatsAppButton from './components/WhatsAppButton.jsx'
 import Landing from './pages/Landing.jsx'
 import Login from './pages/Login.jsx'
+import StaffLogin from './pages/StaffLogin.jsx'
 import Register from './pages/Register.jsx'
+import ForgotPassword from './pages/ForgotPassword.jsx'
+import ResetPassword from './pages/ResetPassword.jsx'
+import Account from './pages/Account.jsx'
+import NotFound from './pages/NotFound.jsx'
+import { Terms, Privacy } from './pages/Legal.jsx'
 import BrandDashboard from './pages/BrandDashboard.jsx'
 import CreatorDashboard from './pages/CreatorDashboard.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
@@ -24,11 +30,18 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/recuperar" element={<ForgotPassword />} />
+        <Route path="/restablecer" element={<ResetPassword />} />
         <Route path="/registro" element={<Register />} />
+        {/* Acceso interno del equipo. Ruta no enlazada en ninguna pantalla pública. */}
+        <Route path="/acceso-staff" element={<StaffLogin />} />
+        <Route path="/terminos" element={<Terms />} />
+        <Route path="/privacidad" element={<Privacy />} />
         <Route path="/marca" element={<Protected role="brand"><BrandDashboard /></Protected>} />
         <Route path="/creadora" element={<Protected role="creator"><CreatorDashboard /></Protected>} />
         <Route path="/admin" element={<Protected role="admin"><AdminDashboard /></Protected>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/cuenta" element={<Protected><Account /></Protected>} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
       <WhatsAppButton />
     </>

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import Logo from './Logo.jsx'
 
 export default function Footer() {
@@ -17,8 +18,8 @@ export default function Footer() {
           </div>
           <div>
             <h4>Legal</h4>
-            <a href="#">Términos y condiciones</a>
-            <a href="#">Privacidad</a>
+            <Link to="/terminos">Términos y condiciones</Link>
+            <Link to="/privacidad">Privacidad</Link>
             <a href="#">Facturación CFDI</a>
           </div>
           <div>

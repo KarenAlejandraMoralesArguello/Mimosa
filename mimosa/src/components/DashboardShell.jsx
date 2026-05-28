@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import Logo from './Logo.jsx'
+import Icon from './Icon.jsx'
 
 export default function DashboardShell({ nav, active, onNavigate, title, subtitle, accent, children }) {
   const { user, logout } = useAuth()
@@ -17,19 +18,20 @@ export default function DashboardShell({ nav, active, onNavigate, title, subtitl
               className={`dash-nav-item${active === item.id ? ' is-active' : ''}`}
               onClick={() => onNavigate(item.id)}
             >
-              <span className="dash-nav-icon">{item.icon}</span>
+              <span className="dash-nav-icon"><Icon name={item.icon} size={18} /></span>
               {item.label}
               {item.badge != null && <span className="dash-nav-badge">{item.badge}</span>}
             </button>
           ))}
         </nav>
-        <div className="dash-user">
+        <Link to="/cuenta" className="dash-user" title="Mi cuenta">
           <div className="dash-avatar">{(user?.name || 'U').charAt(0)}</div>
           <div className="dash-user-meta">
             <strong>{user?.name || 'Usuario'}</strong>
             <span>{user?.email}</span>
           </div>
-        </div>
+          <Icon name="external" size={14} className="dash-user-ic" />
+        </Link>
         <button className="dash-logout" onClick={() => { logout(); navigate('/') }}>Cerrar sesión</button>
       </aside>
 

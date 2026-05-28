@@ -87,41 +87,30 @@ export const CAMPAIGNS = [
 ]
 
 // --- Creadora: marketplace (campañas públicas para aplicar) ---
+const GRADS = ['var(--grad-naranja-solar)', 'var(--grad-solar-rosa)', 'var(--grad-rosa-violeta)', 'var(--grad-violeta-azul)', 'var(--grad-verde-azul)']
 export const MARKETPLACE = [
-  {
-    id: 'm1',
-    title: 'UGC acting — bebida energética Pulse',
-    brand: 'Pulse Drinks',
-    style: 'Acting',
-    duration: 20,
-    videos: 4,
-    refBudget: 2000,
-    deadlineHours: 18,
-    grad: 'var(--grad-naranja-solar)',
-  },
-  {
-    id: 'm2',
-    title: 'Unboxing serum facial — línea Glow',
-    brand: 'Lumière Skincare',
-    style: 'Unboxing',
-    duration: 30,
-    videos: 3,
-    refBudget: 1500,
-    deadlineHours: 92,
-    grad: 'var(--grad-solar-rosa)',
-  },
-  {
-    id: 'm3',
-    title: 'Tutorial recetas — licuadora NovaBlend',
-    brand: 'Nova Home',
-    style: 'UGC',
-    duration: 60,
-    videos: 2,
-    refBudget: 1800,
-    deadlineHours: 140,
-    grad: 'var(--grad-rosa-violeta)',
-  },
-]
+  { id: 'm1', title: 'UGC acting — bebida energética Pulse', brand: 'Pulse Drinks', style: 'Acting', duration: 20, videos: 4, refBudget: 2000, deadlineHours: 18 },
+  { id: 'm2', title: 'Unboxing serum facial — línea Glow', brand: 'Lumière Skincare', style: 'Unboxing', duration: 30, videos: 3, refBudget: 1500, deadlineHours: 92 },
+  { id: 'm3', title: 'Tutorial recetas — licuadora NovaBlend', brand: 'Nova Home', style: 'UGC', duration: 60, videos: 2, refBudget: 1800, deadlineHours: 140 },
+  { id: 'm4', title: 'Reseña honesta — audífonos AuraBeats', brand: 'AuraBeats', style: 'Reseña', duration: 45, videos: 2, refBudget: 1700, deadlineHours: 72 },
+  { id: 'm5', title: 'Día en mi vida con café Volta', brand: 'Volta Coffee', style: 'UGC', duration: 30, videos: 3, refBudget: 1500, deadlineHours: 200 },
+  { id: 'm6', title: 'Unboxing kit maquillaje Bloom', brand: 'Bloom Beauty', style: 'Unboxing', duration: 40, videos: 2, refBudget: 1600, deadlineHours: 38 },
+  { id: 'm7', title: 'Acting — snack saludable Crujie', brand: 'Crujie', style: 'Acting', duration: 25, videos: 5, refBudget: 2500, deadlineHours: 110 },
+  { id: 'm8', title: 'Reseña — protector solar Solaria', brand: 'Solaria Skin', style: 'Reseña', duration: 45, videos: 2, refBudget: 1500, deadlineHours: 16 },
+  { id: 'm9', title: 'UGC outfits — moda Lunarry', brand: 'Lunarry', style: 'UGC', duration: 30, videos: 4, refBudget: 2200, deadlineHours: 160 },
+  { id: 'm10', title: 'Unboxing pijama premium Velvy', brand: 'Velvy', style: 'Unboxing', duration: 25, videos: 2, refBudget: 1400, deadlineHours: 60 },
+  { id: 'm11', title: 'Acting cocina — sartén ChefPro', brand: 'ChefPro', style: 'Acting', duration: 35, videos: 3, refBudget: 1900, deadlineHours: 88 },
+  { id: 'm12', title: 'Reseña libro — editorial Tinta', brand: 'Editorial Tinta', style: 'Reseña', duration: 60, videos: 1, refBudget: 1200, deadlineHours: 240 },
+  { id: 'm13', title: 'UGC fit — leggings Movva', brand: 'Movva Activewear', style: 'UGC', duration: 30, videos: 3, refBudget: 1800, deadlineHours: 14 },
+  { id: 'm14', title: 'Unboxing dispositivo NestPet', brand: 'NestPet', style: 'Unboxing', duration: 40, videos: 2, refBudget: 1700, deadlineHours: 100 },
+  { id: 'm15', title: 'Acting morning — yogurt Greekly', brand: 'Greekly', style: 'Acting', duration: 20, videos: 4, refBudget: 2000, deadlineHours: 130 },
+  { id: 'm16', title: 'Reseña electrodoméstico — VentaFresh', brand: 'VentaFresh', style: 'Reseña', duration: 50, videos: 2, refBudget: 1600, deadlineHours: 175 },
+  { id: 'm17', title: 'UGC tendencia — bebida Frutto', brand: 'Frutto Drinks', style: 'UGC', duration: 25, videos: 5, refBudget: 2400, deadlineHours: 64 },
+  { id: 'm18', title: 'Unboxing vela aromática Lume', brand: 'Lume', style: 'Unboxing', duration: 30, videos: 2, refBudget: 1300, deadlineHours: 22 },
+].map((c, i) => ({ ...c, grad: GRADS[i % GRADS.length] }))
+
+// Estilos disponibles para filtros del marketplace.
+export const MARKET_STYLES = ['UGC', 'Unboxing', 'Reseña', 'Acting']
 
 // --- Postulantes a una campaña (vista marca) ---
 export const APPLICANTS = [
