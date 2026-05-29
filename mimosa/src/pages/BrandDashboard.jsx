@@ -250,16 +250,11 @@ function CreateOrderModal({ open, onClose, onCreated }) {
 
   const reset = () => { setStep('form'); setBase(1500); setVideos(3); onClose() }
 
-  const pay = () => {
-    addOrder({
-      campaign: 'Unboxing serum facial — línea Glow',
-      creator: 'Valentina Ríos',
-      brand: 'Lumière Skincare',
-      videos,
-      base,
-      deadline,
-      deadlineHours: 96,
-    })
+  const pay = async () => {
+    // TODO Fase 3: reemplazar por Edge Function + Stripe Checkout (escrow real).
+    // campana_id y creadora_id serán dinámicos cuando campañas y postulaciones
+    // estén en Supabase. Por ahora se envía sin FK para probar el flujo base.
+    await addOrder({ videos, base, deadline })
     setStep('done')
   }
 

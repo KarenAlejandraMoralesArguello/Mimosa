@@ -1,37 +1,48 @@
-import { useState } from 'react'
-import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase.js'
 import Logo from '../components/Logo.jsx'
 import Icon from '../components/Icon.jsx'
 
-// Pantalla a la que llega el usuario desde el enlace del correo.
-// En producción la URL llega con un token: /restablecer?token=...
-// Supabase intercambia el token por una sesión temporal y permite llamar a
-// supabase.auth.updateUser({ password: nueva }).
+// Supabase redirige aquí con un token en el hash de la URL (#access_token=...).
+// onAuthStateChange detecta el evento PASSWORD_RECOVERY y establece la sesión
+// temporal que permite llamar a updateUser({ password }).
 //
-// Validaciones en cliente (mismo set que enforza el backend):
+// Validaciones (cliente + backend):
 // - Mínimo 8 caracteres
 // - Al menos 1 letra y 1 número
 // - Coincidencia entre los dos campos
 export default function ResetPassword() {
-  const [params] = useSearchParams()
-  const token = params.get('token')
   const [pwd, setPwd] = useState('')
   const [pwd2, setPwd2] = useState('')
   const [err, setErr] = useState('')
   const [done, setDone] = useState(false)
+  const [ready, setReady] = useState(false) // sesión de recovery recibida
   const navigate = useNavigate()
 
-  // Si llegan a /restablecer sin token, en producción Supabase no permitirá
-  // la actualización. En la demo aceptamos el modo "sin token" para poder probarlo.
-  const noToken = !token
+  useEffect(() => {
+    // Supabase dispara PASSWORD_RECOVERY cuando detecta el token en el hash.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') setReady(true)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
     setErr('')
+
     if (pwd.length < 8) { setErr('La contraseña debe tener al menos 8 caracteres.'); return }
     if (!/[A-Za-z]/.test(pwd) || !/\d/.test(pwd)) { setErr('La contraseña debe combinar letras y números.'); return }
     if (pwd !== pwd2) { setErr('Las contraseñas no coinciden.'); return }
-    // En producción: await supabase.auth.updateUser({ password: pwd })
+
+    const { error } = await supabase.auth.updateUser({ password: pwd })
+
+    if (error) {
+      setErr('No pudimos actualizar tu contraseña. El enlace puede haber expirado.')
+      return
+    }
+
     setDone(true)
     setTimeout(() => navigate('/login'), 1800)
   }
@@ -53,6 +64,23 @@ export default function ResetPassword() {
     )
   }
 
+  if (!ready) {
+    return (
+      <div className="auth single">
+        <div className="auth-form-wrap full">
+          <div className="auth-form">
+            <Link to="/" className="auth-back"><Logo /></Link>
+            <h1>Verificando enlace…</h1>
+            <p className="text-muted">Espera un momento mientras validamos tu solicitud.</p>
+            <p className="hint" style={{ marginTop: 18 }}>
+              Si el enlace expiró, <Link to="/recuperar">solicita uno nuevo aquí</Link>.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="auth single">
       <div className="auth-form-wrap full">
@@ -60,13 +88,6 @@ export default function ResetPassword() {
           <Link to="/" className="auth-back"><Logo /></Link>
           <h1>Crea tu nueva contraseña</h1>
           <p className="text-muted">Elige una contraseña segura que recuerdes.</p>
-
-          {noToken && (
-            <div className="info-banner" style={{ marginTop: 14 }}>
-              <strong>Modo demo:</strong> normalmente llegas aquí desde el enlace de tu correo.
-              Para probar puedes definir una contraseña aunque no haya token.
-            </div>
-          )}
 
           <div className="field" style={{ marginTop: 14 }}>
             <label htmlFor="np">Nueva contraseña</label>

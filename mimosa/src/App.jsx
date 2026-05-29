@@ -16,7 +16,10 @@ import AdminDashboard from './pages/AdminDashboard.jsx'
 
 function Protected({ role, children }) {
   const { user } = useAuth()
+  // Esperando sesión inicial de Supabase — no redirigir aún.
+  if (user === 'loading') return null
   if (!user) return <Navigate to="/login" replace />
+  if (user.banned) return <Navigate to="/login" replace />
   if (role && user.role !== role) {
     const home = user.role === 'brand' ? '/marca' : user.role === 'creator' ? '/creadora' : '/admin'
     return <Navigate to={home} replace />

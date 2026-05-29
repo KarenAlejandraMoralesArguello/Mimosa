@@ -1,32 +1,30 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { supabase } from '../lib/supabase.js'
 import Logo from '../components/Logo.jsx'
 import Icon from '../components/Icon.jsx'
-import { findByEmail } from '../data/accounts.js'
 
-// Recuperación de contraseña.
-// En producción esto llama a supabase.auth.resetPasswordForEmail(email, {
-//   redirectTo: 'https://app.mimosa.club/restablecer'
-// }) que envía un correo con un token de un solo uso.
-//
-// Por SEGURIDAD, la pantalla SIEMPRE muestra el mismo mensaje, exista o no
-// la cuenta, para no revelar si un correo está registrado (evita user enumeration).
+// Recuperación de contraseña vía Supabase Auth.
+// Por SEGURIDAD, siempre muestra el mismo mensaje, exista o no la cuenta
+// (evita user enumeration — PRD §3).
 export default function ForgotPassword() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
-    // En la demo simulamos el envío. Comportamiento real va por Supabase.
-    // Verificamos internamente solo para que el demo "sepa" si existe,
-    // pero el mensaje al usuario no lo revela.
-    const acc = findByEmail(email)
-    // Bloqueo extra: el portal público nunca dispara reset para cuentas admin.
-    if (acc && acc.role === 'admin') {
-      setSent(true) // mismo mensaje, sin enviar nada
-      return
-    }
+    setLoading(true)
+
+    // Supabase envía el correo con un OTP/magic link de un solo uso.
+    // redirectTo debe coincidir con la URL configurada en Supabase → Auth → URL Configuration.
+    await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/restablecer`,
+    })
+
+    // Siempre mostramos éxito — no revelamos si el correo existe o no.
     setSent(true)
+    setLoading(false)
   }
 
   if (sent) {
@@ -39,7 +37,7 @@ export default function ForgotPassword() {
               <div className="done-check"><Icon name="check" size={28} color="var(--verde)" strokeWidth={3} /></div>
               <h1>Revisa tu correo</h1>
               <p className="text-muted">
-                Si <strong>{email || 'tu correo'}</strong> está registrado en Mimosa, te enviamos un enlace
+                Si <strong>{email}</strong> está registrado en Mimosa, te enviamos un enlace
                 para restablecer tu contraseña. Revisa también la carpeta de spam.
               </p>
               <p className="hint">El enlace expira en 60 minutos por seguridad.</p>
@@ -66,7 +64,9 @@ export default function ForgotPassword() {
               value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tucorreo@empresa.com" />
           </div>
 
-          <button className="btn btn-grad btn-block" type="submit">Enviar enlace</button>
+          <button className="btn btn-grad btn-block" type="submit" disabled={loading}>
+            {loading ? 'Enviando…' : 'Enviar enlace'}
+          </button>
 
           <p className="auth-alt">
             ¿Te acordaste? <Link to="/login">Iniciar sesión</Link>

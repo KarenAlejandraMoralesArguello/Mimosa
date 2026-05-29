@@ -1,14 +1,12 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { supabase } from '../lib/supabase.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import Logo from '../components/Logo.jsx'
 import Icon from '../components/Icon.jsx'
 import { PLANS } from '../data/mock.js'
-import { registerAccount } from '../data/accounts.js'
 
 export default function Register() {
-  // El rol se DERIVA de la URL (no de useState), así el formulario se
-  // re-renderiza al instante cuando cambias entre marca y creadora.
   const [params, setParams] = useSearchParams()
   const rol = params.get('rol')
   const role = rol === 'creadora' ? 'creator' : rol === 'marca' ? 'brand' : null
@@ -54,14 +52,57 @@ function BrandForm({ onSwitch }) {
   const navigate = useNavigate()
   const [plan, setPlan] = useState('starter')
   const [form, setForm] = useState({ company: '', email: '', password: '' })
+  const [err, setErr] = useState('')
+  const [loading, setLoading] = useState(false)
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
-    // El rol 'brand' queda guardado en la cuenta (futura tabla `perfiles`).
-    const account = { email: form.email || 'marca@demo.com', role: 'brand', name: form.company || 'Mi Marca', plan }
-    registerAccount(account)
-    login(account)
+    setErr('')
+
+    if (form.password.length < 8) { setErr('La contraseña debe tener al menos 8 caracteres.'); return }
+    if (!/[A-Za-z]/.test(form.password) || !/\d/.test(form.password)) {
+      setErr('La contraseña debe combinar letras y números.'); return
+    }
+
+    setLoading(true)
+
+    // 1. Crear usuario en Supabase Auth (el trigger crea el perfil automáticamente).
+    const { data, error } = await supabase.auth.signUp({
+      email: form.email,
+      password: form.password,
+      options: {
+        data: { rol: 'brand', nombre: form.company },
+      },
+    })
+
+    if (error) {
+      const msg = error.message
+      if (msg === 'User already registered') setErr('Ya existe una cuenta con ese correo.')
+      else if (msg?.includes('invalid')) setErr('El correo no es válido.')
+      else if (msg?.includes('rate limit')) setErr('Demasiados intentos. Espera unos minutos e intenta de nuevo.')
+      else setErr('Error al crear la cuenta. Intenta de nuevo.')
+      setLoading(false)
+      return
+    }
+
+    // 2. Insertar fila en `marcas` con el plan elegido.
+    const userId = data.user?.id
+    if (userId) {
+      await supabase.from('marcas').insert({
+        perfil_id:        userId,
+        nombre_comercial: form.company,
+        plan,
+      })
+    }
+
+    // Si Supabase requiere confirmación de email, session es null.
+    if (!data.session) {
+      navigate('/login?confirmar=1')
+      return
+    }
+
+    await login(data.session)
     navigate('/marca')
   }
 
@@ -78,7 +119,7 @@ function BrandForm({ onSwitch }) {
         </div>
         <div className="field">
           <label>Contraseña</label>
-          <input className="input" type="password" autoComplete="new-password" required value={form.password} onChange={set('password')} placeholder="••••••••" />
+          <input className="input" type="password" autoComplete="new-password" required value={form.password} onChange={set('password')} placeholder="Mínimo 8 caracteres con letras y números" />
         </div>
 
         <div className="field">
@@ -96,7 +137,11 @@ function BrandForm({ onSwitch }) {
           <p className="hint">Inicias con prueba gratuita controlada. No hay plan perpetuo gratuito.</p>
         </div>
 
-        <button className="btn btn-grad btn-block" type="submit">Crear cuenta de marca</button>
+        {err && <p className="err" style={{ marginBottom: 14 }}>{err}</p>}
+
+        <button className="btn btn-grad btn-block" type="submit" disabled={loading}>
+          {loading ? 'Creando cuenta…' : 'Crear cuenta de marca'}
+        </button>
         <p className="auth-alt">¿Eres creadora? <button type="button" className="link-btn" onClick={onSwitch}>Regístrate aquí</button></p>
       </form>
     </AuthScaffold>
@@ -108,19 +153,60 @@ function CreatorForm({ onSwitch }) {
   const navigate = useNavigate()
   const [form, setForm] = useState({ name: '', email: '', password: '', portfolio: '' })
   const [err, setErr] = useState('')
+  const [loading, setLoading] = useState(false)
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
+    setErr('')
+
     // PRD §6.1: portafolio externo obligatorio.
     if (!/^https?:\/\/.+\..+/.test(form.portfolio.trim())) {
       setErr('Ingresa un enlace válido a tu portafolio (Behance, Canva, Drive, TikTok…).')
       return
     }
-    // El rol 'creator' y el estado "en validación" quedan en la cuenta.
-    const account = { email: form.email || 'creadora@demo.com', role: 'creator', name: form.name || 'Nueva Creadora', status: 'en_validacion', portfolio: form.portfolio }
-    registerAccount(account)
-    login(account)
+    if (form.password.length < 8) { setErr('La contraseña debe tener al menos 8 caracteres.'); return }
+    if (!/[A-Za-z]/.test(form.password) || !/\d/.test(form.password)) {
+      setErr('La contraseña debe combinar letras y números.'); return
+    }
+
+    setLoading(true)
+
+    // 1. Crear usuario en Supabase Auth.
+    const { data, error } = await supabase.auth.signUp({
+      email: form.email,
+      password: form.password,
+      options: {
+        data: { rol: 'creator', nombre: form.name },
+      },
+    })
+
+    if (error) {
+      const msg = error.message
+      if (msg === 'User already registered') setErr('Ya existe una cuenta con ese correo.')
+      else if (msg?.includes('invalid')) setErr('El correo no es válido.')
+      else if (msg?.includes('rate limit')) setErr('Demasiados intentos. Espera unos minutos e intenta de nuevo.')
+      else setErr('Error al crear la cuenta. Intenta de nuevo.')
+      setLoading(false)
+      return
+    }
+
+    // 2. Insertar fila en `creadoras` con status 'en_validacion' (PRD §6.1).
+    const userId = data.user?.id
+    if (userId) {
+      await supabase.from('creadoras').insert({
+        perfil_id:     userId,
+        portafolio_url: form.portfolio.trim(),
+        status:        'en_validacion',
+      })
+    }
+
+    if (!data.session) {
+      navigate('/login?confirmar=1')
+      return
+    }
+
+    await login(data.session)
     navigate('/creadora')
   }
 
@@ -137,7 +223,7 @@ function CreatorForm({ onSwitch }) {
         </div>
         <div className="field">
           <label>Contraseña</label>
-          <input className="input" type="password" autoComplete="new-password" required value={form.password} onChange={set('password')} placeholder="••••••••" />
+          <input className="input" type="password" autoComplete="new-password" required value={form.password} onChange={set('password')} placeholder="Mínimo 8 caracteres con letras y números" />
         </div>
         <div className="field">
           <label>Enlace a tu portafolio externo *</label>
@@ -149,7 +235,9 @@ function CreatorForm({ onSwitch }) {
           <strong>¿Qué sigue?</strong> Tu cuenta quedará <em>En validación</em>. Un admin revisa tu portafolio y, al aprobarte, capturas tu CLABE para recibir pagos.
         </div>
 
-        <button className="btn btn-grad btn-block" type="submit">Enviar para validación</button>
+        <button className="btn btn-grad btn-block" type="submit" disabled={loading}>
+          {loading ? 'Enviando…' : 'Enviar para validación'}
+        </button>
         <p className="auth-alt">¿Eres marca? <button type="button" className="link-btn" onClick={onSwitch}>Regístrate aquí</button></p>
       </form>
     </AuthScaffold>
