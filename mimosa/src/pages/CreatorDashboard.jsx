@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import DashboardShell from '../components/DashboardShell.jsx'
 import Modal from '../components/Modal.jsx'
 import Icon from '../components/Icon.jsx'
@@ -19,10 +19,11 @@ const GRADS = [
 const PAGE_SIZE = 6
 
 const NAV = [
-  { id: 'home', label: 'Inicio', icon: 'home' },
-  { id: 'market', label: 'Marketplace', icon: 'shop' },
-  { id: 'orders', label: 'Mis órdenes', icon: 'video' },
-  { id: 'finance', label: 'Verificación CLABE', icon: 'bank' },
+  { id: 'home',    label: 'Inicio',              icon: 'home' },
+  { id: 'market',  label: 'Marketplace',          icon: 'shop' },
+  { id: 'orders',  label: 'Mis órdenes',           icon: 'video' },
+  { id: 'chat',    label: 'Chat',                  icon: 'chat' },
+  { id: 'finance', label: 'Verificación CLABE',    icon: 'bank' },
 ]
 
 export default function CreatorDashboard() {
@@ -30,7 +31,6 @@ export default function CreatorDashboard() {
   const [tab, setTab] = useState('home')
   const [status, setStatus] = useState('loading')
 
-  // Cargar el status real desde la tabla `creadoras`.
   useEffect(() => {
     if (!user || !supabase) return
     supabase
@@ -41,20 +41,26 @@ export default function CreatorDashboard() {
       .then(({ data }) => setStatus(data?.status ?? 'en_validacion'))
   }, [user])
 
-
   return (
     <DashboardShell
       nav={NAV}
       active={tab}
       onNavigate={setTab}
       accent="var(--solar)"
-      title={{ home: 'Inicio', market: 'Marketplace de campañas', orders: 'Mis órdenes', finance: 'Verificación financiera' }[tab]}
+      title={{
+        home:    'Inicio',
+        market:  'Marketplace de campañas',
+        orders:  'Mis órdenes',
+        chat:    'Chat de negociación',
+        finance: 'Verificación financiera',
+      }[tab]}
       subtitle={`Panel de creadora · ${user?.name || 'Creadora'}`}
     >
       {tab !== 'finance' && <UrgentBanner role="creator" onJumpToOrders={() => setTab('orders')} />}
-      {tab === 'home' && <Home status={status} goMarket={() => setTab('market')} />}
-      {tab === 'market' && <Marketplace locked={status !== 'verificado'} />}
-      {tab === 'orders' && <Orders />}
+      {tab === 'home'    && <Home status={status} goMarket={() => setTab('market')} />}
+      {tab === 'market'  && <Marketplace locked={status !== 'verificado'} />}
+      {tab === 'orders'  && <Orders />}
+      {tab === 'chat'    && <Chat userId={user?.id} />}
       {tab === 'finance' && <Finance />}
     </DashboardShell>
   )
@@ -96,6 +102,7 @@ function Home({ status, goMarket }) {
       </div>
     )
   }
+
   return (
     <>
       <div className="welcome-banner">
@@ -128,7 +135,7 @@ function Stat({ label, value, grad }) {
 function Marketplace({ locked }) {
   const { user } = useAuth()
   const [campaigns, setCampaigns] = useState([])
-  const [applied, setApplied]     = useState(new Set()) // IDs ya postulados
+  const [applied, setApplied]     = useState(new Set())
   const [loading, setLoading]     = useState(true)
   const [apply, setApply]         = useState(null)
   const [query, setQuery]         = useState('')
@@ -140,14 +147,12 @@ function Marketplace({ locked }) {
     if (!supabase) return
     setLoading(true)
 
-    // Campanas activas con nombre de la marca
     const { data: camps } = await supabase
       .from('campanas')
       .select('id, titulo, brief, estilo, duracion_seg, videos, presupuesto, deadline_hours, marcas ( nombre_comercial )')
       .eq('status', 'activa')
       .order('created_at', { ascending: false })
 
-    // IDs de campanas a las que ya aplico esta creadora
     const { data: posts } = user ? await supabase
       .from('postulaciones')
       .select('campana_id')
@@ -155,15 +160,15 @@ function Marketplace({ locked }) {
 
     if (camps) {
       setCampaigns(camps.map((c, i) => ({
-        id:          c.id,
-        title:       c.titulo,
-        brand:       c.marcas?.nombre_comercial ?? 'Marca',
-        style:       c.estilo,
-        duration:    c.duracion_seg,
-        videos:      c.videos,
-        refBudget:   Number(c.presupuesto),
+        id:            c.id,
+        title:         c.titulo,
+        brand:         c.marcas?.nombre_comercial ?? 'Marca',
+        style:         c.estilo,
+        duration:      c.duracion_seg,
+        videos:        c.videos,
+        refBudget:     Number(c.presupuesto),
         deadlineHours: c.deadline_hours ?? 999,
-        grad:        GRADS[i % GRADS.length],
+        grad:          GRADS[i % GRADS.length],
       })))
     }
     if (posts) setApplied(new Set(posts.map((p) => p.campana_id)))
@@ -409,11 +414,10 @@ function ApplyModal({ campaign, onClose, onApplied }) {
 function Orders() {
   const { orders, deliverOrder } = useStore()
   const [deliver, setDeliver] = useState(null)
-  const mine = orders
   return (
     <>
       <div className="grid orders-grid">
-        {mine.map((o) => {
+        {orders.map((o) => {
           const st = STATUS_MAP[o.status]
           const q = quote(o.base)
           const urgent = o.deadlineHours > 0 && o.deadlineHours < 24
@@ -457,8 +461,224 @@ function DeliverModal({ order, onClose, onDeliver }) {
         <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://drive.google.com/…" />
         {!valid && url && <p className="err">Ingresa una URL válida.</p>}
       </div>
-      <p className="hint">No se permiten videos finales en el chat. La entrega se registra como “Entregado - Pendiente de Revisión”.</p>
+      <p className="hint">No se permiten videos finales en el chat. La entrega se registra como "Entregado - Pendiente de Revisión".</p>
     </Modal>
+  )
+}
+
+/* ---- CHAT ---- */
+
+function Chat({ userId }) {
+  const [ctx, setCtx] = useState(null)
+
+  if (!ctx) return <ChatList userId={userId} onSelect={setCtx} />
+  return <ChatConversation userId={userId} ctx={ctx} onBack={() => setCtx(null)} />
+}
+
+function ChatList({ userId, onSelect }) {
+  const [chats, setChats]     = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!userId || !supabase) return
+    supabase
+      .from('chats')
+      .select('id, campana_id, marca_id, campanas ( titulo, videos ), marcas ( nombre_comercial )')
+      .eq('creadora_id', userId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) setChats(data.map((c) => ({
+          chatId:     c.id,
+          campanaId:  c.campana_id,
+          marcaId:    c.marca_id,
+          marcaNombre: c.marcas?.nombre_comercial ?? 'Marca',
+          campTitle:  c.campanas?.titulo  ?? 'Campana',
+          videos:     c.campanas?.videos  ?? 1,
+        })))
+        setLoading(false)
+      })
+  }, [userId])
+
+  if (loading) return <div className="card card-pad center"><p className="text-muted">Cargando chats...</p></div>
+
+  if (chats.length === 0) {
+    return (
+      <div className="card card-pad center">
+        <Icon name="chat" size={32} color="var(--solar)" />
+        <p className="text-muted" style={{ marginTop: 12 }}>
+          Aún no tienes chats. Cuando una marca te seleccione, podrás negociar aquí.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="chat-list">
+      {chats.map((c) => (
+        <button key={c.chatId} className="chat-list-item" onClick={() => onSelect(c)}>
+          <div className="dash-avatar">{c.marcaNombre.charAt(0)}</div>
+          <div className="cli-info">
+            <strong>{c.marcaNombre}</strong>
+            <span>{c.campTitle} &middot; {c.videos} videos</span>
+          </div>
+          <span className="cli-arrow">→</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ChatConversation({ userId, ctx, onBack }) {
+  const [messages, setMessages] = useState([])
+  const [text, setText]         = useState('')
+  const [sending, setSending]   = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const endRef  = useRef(null)
+  const fileRef = useRef(null)
+
+  useEffect(() => {
+    if (!ctx?.chatId || !supabase) return
+    setMessages([])
+
+    supabase
+      .from('mensajes')
+      .select('id, from_perfil_id, texto, archivo_url, created_at')
+      .eq('chat_id', ctx.chatId)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => { if (data) setMessages(data) })
+
+    const channel = supabase
+      .channel('mensajes:' + ctx.chatId)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'mensajes', filter: 'chat_id=eq.' + ctx.chatId },
+        (payload) => {
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === payload.new.id)) return prev
+            return [...prev, payload.new]
+          })
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [ctx?.chatId])
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const sendText = async () => {
+    if (!text.trim() || sending) return
+    setSending(true)
+    const optimistic = {
+      id: 'opt-' + Date.now(),
+      from_perfil_id: userId,
+      texto: text.trim(),
+      archivo_url: null,
+      created_at: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, optimistic])
+    setText('')
+    await supabase.from('mensajes').insert({
+      chat_id:        ctx.chatId,
+      from_perfil_id: userId,
+      texto:          optimistic.texto,
+    })
+    setSending(false)
+  }
+
+  const sendFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) { alert('El archivo no puede exceder 5 MB.'); return }
+    setUploading(true)
+    const path = ctx.chatId + '/' + Date.now() + '-' + file.name
+    const { error: upErr } = await supabase.storage.from('chat-attachments').upload(path, file)
+    if (upErr) { alert('Error al subir el archivo.'); setUploading(false); e.target.value = ''; return }
+    const { data: { publicUrl } } = supabase.storage.from('chat-attachments').getPublicUrl(path)
+    const optimistic = {
+      id: 'opt-file-' + Date.now(),
+      from_perfil_id: userId,
+      texto: null,
+      archivo_url: publicUrl,
+      created_at: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, optimistic])
+    await supabase.from('mensajes').insert({
+      chat_id:        ctx.chatId,
+      from_perfil_id: userId,
+      archivo_url:    publicUrl,
+    })
+    setUploading(false)
+    e.target.value = ''
+  }
+
+  const fmt   = (iso) => new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+  const fname = (url) => { try { return decodeURIComponent(url.split('/').pop().replace(/^\d+-/, '')) } catch { return 'Archivo' } }
+
+  return (
+    <div className="chat-main card">
+      <div className="chat-head">
+        <button className="chat-back" onClick={onBack}>← Volver</button>
+        <div className="dash-avatar">{ctx.marcaNombre?.charAt(0)}</div>
+        <div>
+          <strong>{ctx.marcaNombre}</strong>
+          <div className="text-muted" style={{ fontSize: 13 }}>{ctx.campTitle}</div>
+        </div>
+      </div>
+      <div className="chat-body">
+        {messages.length === 0 && (
+          <p className="text-muted" style={{ textAlign: 'center', marginTop: 24, fontSize: 14 }}>
+            Inicia la conversación con {ctx.marcaNombre}.
+          </p>
+        )}
+        {messages.map((m) => (
+          <div key={m.id} className={'bubble ' + (m.from_perfil_id === userId ? 'me' : 'them')}>
+            {m.archivo_url && (
+              <span className="bubble-file">
+                <Icon name="paperclip" size={14} /> {fname(m.archivo_url)}{' '}
+                <a href={m.archivo_url} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline', fontSize: 12 }}>
+                  Descargar
+                </a>
+              </span>
+            )}
+            {m.texto && <p>{m.texto}</p>}
+            <span className="bubble-time">{fmt(m.created_at)}</span>
+          </div>
+        ))}
+        <div ref={endRef} />
+      </div>
+      <div className="chat-input">
+        <input
+          ref={fileRef}
+          type="file"
+          style={{ display: 'none' }}
+          accept="image/*,application/pdf,.doc,.docx,.txt"
+          onChange={sendFile}
+        />
+        <button
+          className="chat-attach"
+          title="Adjuntar referencia (max 5MB)"
+          type="button"
+          disabled={uploading}
+          onClick={() => fileRef.current?.click()}
+        >
+          {uploading ? '…' : <Icon name="paperclip" size={18} />}
+        </button>
+        <input
+          className="input"
+          placeholder="Escribe un mensaje..."
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText() } }}
+        />
+        <button className="btn btn-primary btn-sm" onClick={sendText} disabled={sending || !text.trim()}>
+          Enviar
+        </button>
+      </div>
+      <p className="chat-note">Archivos de referencia hasta 5 MB. Prohibido subir videos finales aquí.</p>
+    </div>
   )
 }
 

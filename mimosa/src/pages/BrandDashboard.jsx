@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import DashboardShell from '../components/DashboardShell.jsx'
 import Modal from '../components/Modal.jsx'
 import Icon from '../components/Icon.jsx'
@@ -6,15 +6,15 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { useStore } from '../context/StoreContext.jsx'
 import { supabase } from '../lib/supabase.js'
 import UrgentBanner from '../components/UrgentBanner.jsx'
-import { CHAT_MESSAGES, STATUS_MAP, quote, MIN_VIDEO_PRICE } from '../data/mock.js'
+import { APPLICANTS, STATUS_MAP, quote, MIN_VIDEO_PRICE } from '../data/mock.js'
 
 const PLAN_LIMITS = { foru: 3, starter: 6, pro: 12 }
 
 const NAV = [
-  { id: 'campaigns', label: 'Campanas',        icon: 'megaphone' },
-  { id: 'applicants', label: 'Postulantes',    icon: 'users', badge: APPLICANTS.length },
-  { id: 'chat',       label: 'Chat',           icon: 'chat' },
-  { id: 'orders',     label: 'Ordenes Escrow', icon: 'shield' },
+  { id: 'campaigns',  label: 'Campanas',        icon: 'megaphone' },
+  { id: 'applicants', label: 'Postulantes',      icon: 'users', badge: APPLICANTS.length },
+  { id: 'chat',       label: 'Chat',             icon: 'chat' },
+  { id: 'orders',     label: 'Ordenes Escrow',   icon: 'shield' },
 ]
 
 export default function BrandDashboard() {
@@ -22,8 +22,8 @@ export default function BrandDashboard() {
   const [tab, setTab] = useState('campaigns')
   const [brandName, setBrandName] = useState('')
   const [plan, setPlan] = useState('starter')
+  const [initialChatCtx, setInitialChatCtx] = useState(null)
 
-  // Cargar nombre comercial y plan desde la tabla `marcas`.
   useEffect(() => {
     if (!user || !supabase) return
     supabase
@@ -55,9 +55,20 @@ export default function BrandDashboard() {
     >
       {tab !== 'chat' && <UrgentBanner role="brand" onJumpToOrders={() => setTab('orders')} />}
       {tab === 'campaigns'  && <Campaigns brandId={user?.id} plan={plan} onOpenApplicants={() => setTab('applicants')} />}
-      {tab === 'applicants' && <Applicants brandId={user?.id} onOpenChat={() => setTab('chat')} />}
-      {tab === 'chat'       && <Chat onCreated={() => setTab('orders')} />}
-      {tab === 'orders'     && <Orders />}
+      {tab === 'applicants' && (
+        <Applicants
+          brandId={user?.id}
+          onStartChat={(ctx) => { setInitialChatCtx(ctx); setTab('chat') }}
+        />
+      )}
+      {tab === 'chat' && (
+        <Chat
+          userId={user?.id}
+          initialCtx={initialChatCtx}
+          onCreated={() => setTab('orders')}
+        />
+      )}
+      {tab === 'orders' && <Orders />}
     </DashboardShell>
   )
 }
@@ -89,8 +100,8 @@ function Campaigns({ brandId, plan, onOpenApplicants }) {
     setNewOpen(false)
   }
 
-  const limit    = PLAN_LIMITS[plan] ?? 6
-  const activas  = campaigns.filter((c) => c.status === 'activa').length
+  const limit   = PLAN_LIMITS[plan] ?? 6
+  const activas = campaigns.filter((c) => c.status === 'activa').length
 
   if (loading) {
     return <div className="card card-pad center"><p className="text-muted">Cargando campanas...</p></div>
@@ -197,7 +208,7 @@ function NewCampaignModal({ open, brandId, onClose, onCreated }) {
         duracion_seg: Number(form.duracion_seg),
         videos:      Number(form.videos),
         presupuesto,
-        status:      'pendiente', // va a pre-aprobacion del admin
+        status:      'pendiente',
       })
       .select()
       .single()
@@ -306,21 +317,21 @@ function CampaignDetailModal({ campaign, onClose, onOpenApplicants }) {
 
 /* ---- POSTULANTES ---- */
 
-function Applicants({ brandId, onOpenChat }) {
+function Applicants({ brandId, onStartChat }) {
   const [campaigns, setCampaigns]   = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [applicants, setApplicants] = useState([])
   const [loadingC, setLoadingC]     = useState(true)
   const [loadingA, setLoadingA]     = useState(false)
   const [portfolio, setPortfolio]   = useState(null)
+  const [startingChat, setStartingChat] = useState(false)
 
-  // Cargar campanas de la marca para el selector
   useEffect(() => {
     if (!brandId || !supabase) return
     setLoadingC(true)
     supabase
       .from('campanas')
-      .select('id, titulo')
+      .select('id, titulo, videos, presupuesto')
       .eq('marca_id', brandId)
       .in('status', ['activa', 'pendiente', 'cerrada'])
       .order('created_at', { ascending: false })
@@ -333,7 +344,6 @@ function Applicants({ brandId, onOpenChat }) {
       })
   }, [brandId])
 
-  // Cargar postulantes de la campana seleccionada
   useEffect(() => {
     if (!selectedId || !supabase) return
     setLoadingA(true)
@@ -349,6 +359,35 @@ function Applicants({ brandId, onOpenChat }) {
   }, [selectedId])
 
   const selectedCamp = campaigns.find((c) => c.id === selectedId)
+
+  const handleStartChat = async (a) => {
+    if (!supabase || !brandId || !selectedId || startingChat) return
+    setStartingChat(true)
+    const creadoId    = a.creadoras?.perfil_id
+    const creadoNombre = a.creadoras?.perfiles?.nombre ?? 'Creadora'
+
+    const { data, error } = await supabase
+      .from('chats')
+      .upsert(
+        { campana_id: selectedId, marca_id: brandId, creadora_id: creadoId },
+        { onConflict: 'campana_id,creadora_id' }
+      )
+      .select('id')
+      .single()
+
+    setStartingChat(false)
+    if (error || !data) { console.error('chat upsert:', error); return }
+
+    onStartChat({
+      chatId:      data.id,
+      campanaId:   selectedId,
+      creadoId,
+      creadoNombre,
+      campTitle:   selectedCamp?.titulo    ?? 'Campana',
+      videos:      selectedCamp?.videos    ?? 1,
+      presupuesto: selectedCamp?.presupuesto ?? 0,
+    })
+  }
 
   if (loadingC) {
     return <div className="card card-pad center"><p className="text-muted">Cargando...</p></div>
@@ -366,7 +405,6 @@ function Applicants({ brandId, onOpenChat }) {
 
   return (
     <>
-      {/* Selector de campana */}
       <div className="toolbar">
         <div className="field" style={{ margin: 0, minWidth: 260 }}>
           <select
@@ -397,7 +435,7 @@ function Applicants({ brandId, onOpenChat }) {
         <div className="grid cards-grid">
           {applicants.map((a) => {
             const nombre    = a.creadoras?.perfiles?.nombre ?? 'Creadora'
-            const portfolio = a.creadoras?.portafolio_url
+            const portUrl   = a.creadoras?.portafolio_url
             const verified  = a.creadoras?.status === 'verificado'
             const q         = quote(a.precio_video * (selectedCamp?.videos ?? 1))
             return (
@@ -422,16 +460,20 @@ function Applicants({ brandId, onOpenChat }) {
                   <span className="text-muted">Total marca aprox. ${q.brandPays.toLocaleString()}</span>
                 </div>
                 <div className="applicant-actions">
-                  {portfolio && (
+                  {portUrl && (
                     <button
                       className="btn btn-ghost btn-sm"
-                      onClick={() => setPortfolio({ nombre, url: portfolio })}
+                      onClick={() => setPortfolio({ nombre, url: portUrl })}
                     >
                       Ver portafolio
                     </button>
                   )}
-                  <button className="btn btn-primary btn-sm" onClick={onOpenChat}>
-                    Iniciar chat
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => handleStartChat(a)}
+                    disabled={startingChat}
+                  >
+                    {startingChat ? 'Abriendo...' : 'Iniciar chat'}
                   </button>
                 </div>
               </div>
@@ -465,75 +507,283 @@ function Applicants({ brandId, onOpenChat }) {
   )
 }
 
-/* ---- CHAT (aun mock, se migra en Fase D) ---- */
+/* ---- CHAT ---- */
 
-function Chat({ onCreated }) {
+function Chat({ userId, initialCtx, onCreated }) {
+  const [ctx, setCtx] = useState(null)
+
+  useEffect(() => {
+    if (initialCtx) setCtx(initialCtx)
+  }, [initialCtx])
+
+  if (!ctx) return <ChatList userId={userId} onSelect={setCtx} />
+  return (
+    <ChatConversation
+      userId={userId}
+      ctx={ctx}
+      onBack={() => setCtx(null)}
+      onCreated={onCreated}
+      isBrand
+    />
+  )
+}
+
+function ChatList({ userId, onSelect }) {
+  const [chats, setChats]   = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!userId || !supabase) return
+    supabase
+      .from('chats')
+      .select('id, campana_id, creadora_id, campanas ( titulo, videos, presupuesto ), creadoras ( perfiles ( nombre ) )')
+      .eq('marca_id', userId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) setChats(data.map((c) => ({
+          chatId:      c.id,
+          campanaId:   c.campana_id,
+          creadoId:    c.creadora_id,
+          creadoNombre: c.creadoras?.perfiles?.nombre ?? 'Creadora',
+          campTitle:   c.campanas?.titulo    ?? 'Campana',
+          videos:      c.campanas?.videos    ?? 1,
+          presupuesto: c.campanas?.presupuesto ?? 0,
+        })))
+        setLoading(false)
+      })
+  }, [userId])
+
+  if (loading) return <div className="card card-pad center"><p className="text-muted">Cargando chats...</p></div>
+
+  if (chats.length === 0) {
+    return (
+      <div className="card card-pad center">
+        <Icon name="chat" size={32} color="var(--rosa)" />
+        <p className="text-muted" style={{ marginTop: 12 }}>
+          Aun no tienes chats abiertos. Ve a <strong>Postulantes</strong> y haz clic en "Iniciar chat" para comenzar a negociar con una creadora.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="chat-list">
+      {chats.map((c) => (
+        <button key={c.chatId} className="chat-list-item" onClick={() => onSelect(c)}>
+          <div className="dash-avatar">{c.creadoNombre.charAt(0)}</div>
+          <div className="cli-info">
+            <strong>{c.creadoNombre}</strong>
+            <span>{c.campTitle} &middot; {c.videos} videos</span>
+          </div>
+          <span className="cli-arrow">→</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ChatConversation({ userId, ctx, onBack, onCreated, isBrand }) {
+  const [messages, setMessages] = useState([])
+  const [text, setText]         = useState('')
+  const [sending, setSending]   = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [orderOpen, setOrderOpen] = useState(false)
+  const endRef  = useRef(null)
+  const fileRef = useRef(null)
+
+  // Cargar mensajes e iniciar suscripcion Realtime
+  useEffect(() => {
+    if (!ctx?.chatId || !supabase) return
+    setMessages([])
+
+    supabase
+      .from('mensajes')
+      .select('id, from_perfil_id, texto, archivo_url, created_at')
+      .eq('chat_id', ctx.chatId)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => { if (data) setMessages(data) })
+
+    const channel = supabase
+      .channel('mensajes:' + ctx.chatId)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'mensajes', filter: 'chat_id=eq.' + ctx.chatId },
+        (payload) => {
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === payload.new.id)) return prev
+            return [...prev, payload.new]
+          })
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [ctx?.chatId])
+
+  // Auto-scroll al ultimo mensaje
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const sendText = async () => {
+    if (!text.trim() || sending) return
+    setSending(true)
+    const optimistic = {
+      id: 'opt-' + Date.now(),
+      from_perfil_id: userId,
+      texto: text.trim(),
+      archivo_url: null,
+      created_at: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, optimistic])
+    setText('')
+    await supabase.from('mensajes').insert({
+      chat_id:        ctx.chatId,
+      from_perfil_id: userId,
+      texto:          optimistic.texto,
+    })
+    setSending(false)
+  }
+
+  const sendFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) { alert('El archivo no puede exceder 5 MB.'); return }
+    setUploading(true)
+    const path = ctx.chatId + '/' + Date.now() + '-' + file.name
+    const { error: upErr } = await supabase.storage.from('chat-attachments').upload(path, file)
+    if (upErr) { alert('Error al subir el archivo.'); setUploading(false); e.target.value = ''; return }
+    const { data: { publicUrl } } = supabase.storage.from('chat-attachments').getPublicUrl(path)
+    const optimistic = {
+      id: 'opt-file-' + Date.now(),
+      from_perfil_id: userId,
+      texto: null,
+      archivo_url: publicUrl,
+      created_at: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, optimistic])
+    await supabase.from('mensajes').insert({
+      chat_id:        ctx.chatId,
+      from_perfil_id: userId,
+      archivo_url:    publicUrl,
+    })
+    setUploading(false)
+    e.target.value = ''
+  }
+
+  const fmt  = (iso) => new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+  const fname = (url) => { try { return decodeURIComponent(url.split('/').pop().replace(/^\d+-/, '')) } catch { return 'Archivo' } }
+
+  const otherName = isBrand ? ctx.creadoNombre : ctx.marcaNombre
+
+  const conversation = (
+    <div className="chat-main card">
+      <div className="chat-head">
+        <button className="chat-back" onClick={onBack}>← Volver</button>
+        <div className="dash-avatar">{otherName?.charAt(0)}</div>
+        <div>
+          <strong>{otherName}</strong>
+          <div className="text-muted" style={{ fontSize: 13 }}>{ctx.campTitle}</div>
+        </div>
+      </div>
+      <div className="chat-body">
+        {messages.length === 0 && (
+          <p className="text-muted" style={{ textAlign: 'center', marginTop: 24, fontSize: 14 }}>
+            Inicia la negociacion con {otherName}.
+          </p>
+        )}
+        {messages.map((m) => (
+          <div key={m.id} className={'bubble ' + (m.from_perfil_id === userId ? 'me' : 'them')}>
+            {m.archivo_url && (
+              <span className="bubble-file">
+                <Icon name="paperclip" size={14} /> {fname(m.archivo_url)}{' '}
+                <a href={m.archivo_url} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline', fontSize: 12 }}>
+                  Descargar
+                </a>
+              </span>
+            )}
+            {m.texto && <p>{m.texto}</p>}
+            <span className="bubble-time">{fmt(m.created_at)}</span>
+          </div>
+        ))}
+        <div ref={endRef} />
+      </div>
+      <div className="chat-input">
+        <input
+          ref={fileRef}
+          type="file"
+          style={{ display: 'none' }}
+          accept="image/*,application/pdf,.doc,.docx,.txt"
+          onChange={sendFile}
+        />
+        <button
+          className="chat-attach"
+          title="Adjuntar referencia (max 5MB)"
+          type="button"
+          disabled={uploading}
+          onClick={() => fileRef.current?.click()}
+        >
+          {uploading ? '…' : <Icon name="paperclip" size={18} />}
+        </button>
+        <input
+          className="input"
+          placeholder="Escribe un mensaje..."
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText() } }}
+        />
+        <button className="btn btn-primary btn-sm" onClick={sendText} disabled={sending || !text.trim()}>
+          Enviar
+        </button>
+      </div>
+      <p className="chat-note">Archivos de referencia hasta 5 MB. Prohibido subir videos finales aqui.</p>
+    </div>
+  )
+
+  if (!isBrand) return conversation
+
   return (
     <div className="chat-layout">
-      <div className="chat-main card">
-        <div className="chat-head">
-          <div className="dash-avatar">V</div>
-          <div>
-            <strong>Valentina Rios</strong>
-            <div className="text-muted" style={{ fontSize: 13 }}>@valeugc - Glow serum</div>
-          </div>
-          <span className="badge badge-verde" style={{ marginLeft: 'auto' }}><span className="dot" /> En linea</span>
-        </div>
-        <div className="chat-body">
-          {CHAT_MESSAGES.map((m) => (
-            <div key={m.id} className={'bubble ' + (m.from === 'brand' ? 'me' : 'them')}>
-              {m.file && (
-                <span className="bubble-file">
-                  <Icon name="paperclip" size={14} /> {m.file} <em>(2.1 MB)</em>
-                </span>
-              )}
-              <p>{m.text}</p>
-              <span className="bubble-time">{m.time}</span>
-            </div>
-          ))}
-        </div>
-        <div className="chat-input">
-          <button className="chat-attach" title="Adjuntar referencia (max 5MB)" type="button">
-            <Icon name="paperclip" size={18} />
-          </button>
-          <input className="input" placeholder="Escribe un mensaje..." />
-          <button className="btn btn-primary btn-sm">Enviar</button>
-        </div>
-        <p className="chat-note">Archivos de referencia hasta 5MB. Prohibido subir videos finales aqui.</p>
-      </div>
-
+      {conversation}
       <aside className="chat-side card card-pad">
         <h3>Resumen de la colaboracion</h3>
         <ul className="chat-summary">
-          <li><span>Campana</span><strong>Glow serum</strong></li>
-          <li><span>Videos</span><strong>3 x 30s</strong></li>
-          <li><span>Acuerdo verbal</span><strong>$1,500 MXN</strong></li>
+          <li><span>Campana</span><strong>{ctx.campTitle}</strong></li>
+          <li><span>Creadora</span><strong>{ctx.creadoNombre}</strong></li>
+          <li><span>Videos</span><strong>{ctx.videos} videos</strong></li>
+          <li><span>Presupuesto ref.</span><strong>${Number(ctx.presupuesto).toLocaleString()} MXN</strong></li>
         </ul>
         <button className="btn btn-grad btn-block" onClick={() => setOrderOpen(true)}>
           <Icon name="shield" size={16} color="#fff" /> Crear orden
         </button>
         <p className="hint">Al crear la orden se genera el pago en escrow via Stripe.</p>
       </aside>
-
-      <CreateOrderModal open={orderOpen} onClose={() => setOrderOpen(false)} onCreated={onCreated} />
+      <CreateOrderModal
+        open={orderOpen}
+        onClose={() => setOrderOpen(false)}
+        onCreated={onCreated}
+        campanaId={ctx.campanaId}
+        creadoId={ctx.creadoId}
+        defaultVideos={ctx.videos}
+        defaultBase={Number(ctx.presupuesto)}
+      />
     </div>
   )
 }
 
-function CreateOrderModal({ open, onClose, onCreated }) {
+function CreateOrderModal({ open, onClose, onCreated, campanaId, creadoId, defaultVideos = 3, defaultBase = 1500 }) {
   const { addOrder } = useStore()
-  const [base, setBase]       = useState(1500)
-  const [videos, setVideos]   = useState(3)
+  const [base, setBase]       = useState(defaultBase)
+  const [videos, setVideos]   = useState(defaultVideos)
   const [deadline, setDeadline] = useState('2026-06-04')
   const [step, setStep]       = useState('form')
   const q      = quote(base || 0)
   const tooLow = base < MIN_VIDEO_PRICE
 
-  const reset = () => { setStep('form'); setBase(1500); setVideos(3); onClose() }
+  const reset = () => { setStep('form'); setBase(defaultBase); setVideos(defaultVideos); onClose() }
 
   const pay = async () => {
-    await addOrder({ videos, base, deadline })
+    await addOrder({ videos, base, deadline, campana_id: campanaId ?? null, creadora_id: creadoId ?? null })
     setStep('done')
   }
 
