@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import DashboardShell from '../components/DashboardShell.jsx'
 import Modal from '../components/Modal.jsx'
 import Icon from '../components/Icon.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useStore } from '../context/StoreContext.jsx'
+import { supabase } from '../lib/supabase.js'
 import UrgentBanner from '../components/UrgentBanner.jsx'
 import { MARKETPLACE, MARKET_STYLES, STATUS_MAP, quote, MIN_VIDEO_PRICE } from '../data/mock.js'
 
@@ -19,8 +20,19 @@ const NAV = [
 export default function CreatorDashboard() {
   const { user } = useAuth()
   const [tab, setTab] = useState('home')
-  // Demo: una creadora recién registrada está "en_validacion"; las demo entran verificadas.
-  const [status, setStatus] = useState(user?.status === 'en_validacion' ? 'en_validacion' : 'verificado')
+  const [status, setStatus] = useState('loading')
+
+  // Cargar el status real desde la tabla `creadoras`.
+  useEffect(() => {
+    if (!user || !supabase) return
+    supabase
+      .from('creadoras')
+      .select('status')
+      .eq('perfil_id', user.id)
+      .single()
+      .then(({ data }) => setStatus(data?.status ?? 'en_validacion'))
+  }, [user])
+
 
   return (
     <DashboardShell
@@ -32,16 +44,33 @@ export default function CreatorDashboard() {
       subtitle={`Panel de creadora · ${user?.name || 'Creadora'}`}
     >
       {tab !== 'finance' && <UrgentBanner role="creator" onJumpToOrders={() => setTab('orders')} />}
-      {tab === 'home' && <Home status={status} onVerify={() => setStatus('verificado')} goMarket={() => setTab('market')} />}
-      {tab === 'market' && <Marketplace locked={status === 'en_validacion'} />}
+      {tab === 'home' && <Home status={status} goMarket={() => setTab('market')} />}
+      {tab === 'market' && <Marketplace locked={status !== 'verificado'} />}
       {tab === 'orders' && <Orders />}
       {tab === 'finance' && <Finance />}
     </DashboardShell>
   )
 }
 
-function Home({ status, onVerify, goMarket }) {
-  if (status === 'en_validacion') {
+function Home({ status, goMarket }) {
+  if (status === 'loading') {
+    return <div className="card card-pad center"><p className="text-muted">Cargando tu perfil...</p></div>
+  }
+
+  if (status === 'rechazado') {
+    return (
+      <div className="card card-pad validation-card">
+        <span className="badge badge-naranja"><span className="dot" /> Perfil rechazado</span>
+        <h2>Tu portafolio no fue aprobado</h2>
+        <p className="text-muted">
+          Revisamos tu portafolio y por el momento no cumple con los requisitos de Mimosa.
+          Revisa el feedback que te enviamos y actualiza tu portafolio desde <strong>Mi cuenta</strong>.
+        </p>
+      </div>
+    )
+  }
+
+  if (status === 'en_validacion' || status === 'borrador') {
     return (
       <div className="card card-pad validation-card">
         <span className="badge badge-solar"><span className="dot" /> En validación</span>
@@ -56,8 +85,6 @@ function Home({ status, onVerify, goMarket }) {
           <li>Verificación financiera (CLABE)</li>
           <li>Acceso total al marketplace</li>
         </ol>
-        <p className="hint">Demo: simula la aprobación del administrador para continuar.</p>
-        <button className="btn btn-grad" onClick={onVerify}>Simular aprobación del admin</button>
       </div>
     )
   }

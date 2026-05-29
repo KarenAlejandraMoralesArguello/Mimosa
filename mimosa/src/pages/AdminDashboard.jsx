@@ -1,16 +1,16 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import DashboardShell from '../components/DashboardShell.jsx'
 import Modal from '../components/Modal.jsx'
 import Icon from '../components/Icon.jsx'
 import { useStore } from '../context/StoreContext.jsx'
-import { listAll, banAccount, unbanAccount } from '../data/accounts.js'
-import { PENDING_CREATORS, PENDING_CAMPAIGNS, STATUS_MAP } from '../data/mock.js'
+import { supabase } from '../lib/supabase.js'
+import { PENDING_CAMPAIGNS, STATUS_MAP } from '../data/mock.js'
 
 const NAV = [
-  { id: 'creators', label: 'Validar creadoras', icon: 'check', badge: PENDING_CREATORS.length },
-  { id: 'campaigns', label: 'Pre-aprobar campañas', icon: 'megaphone', badge: PENDING_CAMPAIGNS.length },
-  { id: 'arbitration', label: 'Arbitraje', icon: 'scale' },
-  { id: 'accounts', label: 'Cuentas', icon: 'users' },
+  { id: 'creators',    label: 'Validar creadoras',      icon: 'check' },
+  { id: 'campaigns',   label: 'Pre-aprobar campanas',    icon: 'megaphone', badge: PENDING_CAMPAIGNS.length },
+  { id: 'arbitration', label: 'Arbitraje',               icon: 'scale' },
+  { id: 'accounts',    label: 'Cuentas',                 icon: 'users' },
 ]
 
 export default function AdminDashboard() {
@@ -21,57 +21,160 @@ export default function AdminDashboard() {
       active={tab}
       onNavigate={setTab}
       accent="var(--violeta)"
-      title={{ creators: 'Validación de creadoras', campaigns: 'Pre-aprobación de campañas', arbitration: 'Panel de arbitraje', accounts: 'Cuentas registradas' }[tab]}
-      subtitle="Panel de administración · Mimosa Colab Club"
+      title={{
+        creators:    'Validacion de creadoras',
+        campaigns:   'Pre-aprobacion de campanas',
+        arbitration: 'Panel de arbitraje',
+        accounts:    'Cuentas registradas',
+      }[tab]}
+      subtitle="Panel de administracion - Mimosa Colab Club"
     >
-      {tab === 'creators' && <Creators />}
-      {tab === 'campaigns' && <CampaignReview />}
+      {tab === 'creators'    && <Creators />}
+      {tab === 'campaigns'   && <CampaignReview />}
       {tab === 'arbitration' && <Arbitration />}
-      {tab === 'accounts' && <Accounts />}
+      {tab === 'accounts'    && <Accounts />}
     </DashboardShell>
   )
 }
 
-function Creators() {
-  const [list, setList] = useState(PENDING_CREATORS)
-  const [reject, setReject] = useState(null)
-  const resolve = (id) => setList(list.filter((c) => c.id !== id))
+/* ---- VALIDACION DE CREADORAS ---- */
 
-  if (list.length === 0) return <div className="card card-pad center inline-ic"><Icon name="check" size={16} color="var(--verde)" strokeWidth={2.5} /> <p className="text-muted" style={{margin:0}}>No hay creadoras pendientes de validación.</p></div>
+function Creators() {
+  const [list, setList]         = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [reject, setReject]     = useState(null)
+  const [feedback, setFeedback] = useState('')
+
+  const fetchPending = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('creadoras')
+      .select('perfil_id, portafolio_url, status, created_at, perfiles ( nombre, email )')
+      .eq('status', 'en_validacion')
+      .order('created_at', { ascending: true })
+    if (!error && data) setList(data)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchPending() }, [fetchPending])
+
+  const aprobar = async (creadora) => {
+    await supabase
+      .from('creadoras')
+      .update({ status: 'verificado', validation_feedback: null })
+      .eq('perfil_id', creadora.perfil_id)
+    setList((prev) => prev.filter((c) => c.perfil_id !== creadora.perfil_id))
+  }
+
+  const rechazar = async () => {
+    await supabase
+      .from('creadoras')
+      .update({ status: 'rechazado', validation_feedback: feedback })
+      .eq('perfil_id', reject.perfil_id)
+    await supabase.from('feedback_validacion').insert({
+      creadora_id: reject.perfil_id,
+      admin_id:    (await supabase.auth.getUser()).data.user.id,
+      mensaje:     feedback,
+    })
+    setList((prev) => prev.filter((c) => c.perfil_id !== reject.perfil_id))
+    setReject(null)
+    setFeedback('')
+  }
+
+  if (loading) {
+    return <div className="card card-pad center"><p className="text-muted">Cargando...</p></div>
+  }
+
+  if (list.length === 0) {
+    return (
+      <div className="card card-pad center inline-ic">
+        <Icon name="check" size={16} color="var(--verde)" strokeWidth={2.5} />
+        <p className="text-muted" style={{ margin: 0 }}>No hay creadoras pendientes de validacion.</p>
+      </div>
+    )
+  }
 
   return (
     <>
       <div className="grid cards-grid">
         {list.map((c) => (
-          <div key={c.id} className="card card-pad">
+          <div key={c.perfil_id} className="card card-pad">
             <div className="applicant-head">
-              <div className="dash-avatar lg">{c.name.charAt(0)}</div>
-              <div><strong>{c.name}</strong><div className="text-muted">{c.handle}</div></div>
-              <span className="badge badge-solar"><span className="dot" /> En validación</span>
+              <div className="dash-avatar lg">{(c.perfiles?.nombre || '?').charAt(0)}</div>
+              <div>
+                <strong>{c.perfiles?.nombre || 'Sin nombre'}</strong>
+                <div className="text-muted">{c.perfiles?.email}</div>
+              </div>
+              <span className="badge badge-solar"><span className="dot" /> En validacion</span>
             </div>
-            <p className="text-muted" style={{ fontSize: 13 }}>Enviado: {c.submitted}</p>
-            <a className="link-azul" href={c.portfolio} target="_blank" rel="noreferrer"><Icon name="external" size={14} /> Revisar portafolio externo</a>
+            <p className="text-muted" style={{ fontSize: 13 }}>
+              Enviado: {new Date(c.created_at).toLocaleDateString('es-MX')}
+            </p>
+            <a className="link-azul" href={c.portafolio_url} target="_blank" rel="noreferrer">
+              <Icon name="external" size={14} /> Revisar portafolio externo
+            </a>
             <div className="applicant-actions" style={{ marginTop: 16 }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => setReject(c)}>Rechazar</button>
-              <button className="btn btn-primary btn-sm" style={{ background: 'var(--verde)' }} onClick={() => resolve(c.id)}>Aprobar</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setReject(c); setFeedback('') }}>
+                Rechazar
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                style={{ background: 'var(--verde)' }}
+                onClick={() => aprobar(c)}
+              >
+                Aprobar
+              </button>
             </div>
           </div>
         ))}
       </div>
 
-      <Modal open={!!reject} onClose={() => setReject(null)} title={reject ? `Feedback para ${reject.name}` : ''}
-        footer={<button className="btn btn-primary btn-sm" onClick={() => { resolve(reject.id); setReject(null) }}>Enviar feedback y devolver a borrador</button>}>
-        <p className="text-muted">El perfil vuelve a estado “Borrador” y la creadora recibe este feedback por correo.</p>
-        <div className="field"><label>Feedback constructivo</label><textarea className="textarea" placeholder="Ej. El portafolio necesita más muestras de video vertical y mejor iluminación…" /></div>
+      <Modal
+        open={!!reject}
+        onClose={() => setReject(null)}
+        title={reject ? ('Feedback para ' + (reject.perfiles?.nombre || '')) : ''}
+        footer={
+          <button
+            className="btn btn-primary btn-sm"
+            disabled={!feedback.trim()}
+            onClick={rechazar}
+          >
+            Enviar feedback y rechazar
+          </button>
+        }
+      >
+        <p className="text-muted">
+          La creadora recibira este feedback y su perfil quedara en estado Rechazado.
+        </p>
+        <div className="field">
+          <label>Feedback constructivo</label>
+          <textarea
+            className="textarea"
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            placeholder="Ej. El portafolio necesita mas muestras de video vertical..."
+          />
+        </div>
       </Modal>
     </>
   )
 }
 
+/* ---- PRE-APROBACION DE CAMPANAS (aun mock) ---- */
+
 function CampaignReview() {
   const [list, setList] = useState(PENDING_CAMPAIGNS)
   const resolve = (id) => setList(list.filter((c) => c.id !== id))
-  if (list.length === 0) return <div className="card card-pad center inline-ic"><Icon name="check" size={16} color="var(--verde)" strokeWidth={2.5} /> <p className="text-muted" style={{margin:0}}>No hay campañas pendientes de pre-aprobación.</p></div>
+
+  if (list.length === 0) {
+    return (
+      <div className="card card-pad center inline-ic">
+        <Icon name="check" size={16} color="var(--verde)" strokeWidth={2.5} />
+        <p className="text-muted" style={{ margin: 0 }}>No hay campanas pendientes de pre-aprobacion.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="grid cards-grid">
       {list.map((c) => (
@@ -81,13 +184,21 @@ function CampaignReview() {
           <p className="text-muted">{c.brand} · enviada {c.submitted}</p>
           <div className="applicant-actions" style={{ marginTop: 16 }}>
             <button className="btn btn-ghost btn-sm" onClick={() => resolve(c.id)}>Rechazar</button>
-            <button className="btn btn-primary btn-sm" style={{ background: 'var(--verde)' }} onClick={() => resolve(c.id)}>Publicar en el muro</button>
+            <button
+              className="btn btn-primary btn-sm"
+              style={{ background: 'var(--verde)' }}
+              onClick={() => resolve(c.id)}
+            >
+              Publicar en el muro
+            </button>
           </div>
         </div>
       ))}
     </div>
   )
 }
+
+/* ---- ARBITRAJE ---- */
 
 function Arbitration() {
   const { orders } = useStore()
@@ -97,16 +208,21 @@ function Arbitration() {
         const st = STATUS_MAP[o.status]
         return (
           <div key={o.id} className="card card-pad order-card">
-            <span className={`badge ${st.badge}`}><span className="dot" /> {st.label}</span>
+            <span className={'badge ' + st.badge}><span className="dot" /> {st.label}</span>
             <h3 style={{ marginTop: 12 }}>{o.campaign}</h3>
             <div className="order-meta">
               <span><Icon name="building" size={14} /> {o.brand}</span>
-              <span><Icon name="user" size={14} /> {o.creator}</span>
-              <span><Icon name="money" size={14} /> ${o.base.toLocaleString()}</span>
+              <span><Icon name="user"     size={14} /> {o.creator}</span>
+              <span><Icon name="money"    size={14} /> ${o.base.toLocaleString()}</span>
             </div>
             {o.deliveryUrl
-              ? <a className="link-azul" href={o.deliveryUrl} target="_blank" rel="noreferrer"><Icon name="external" size={14} /> Inspeccionar entrega</a>
-              : <p className="hint">Sin entrega registrada aún.</p>}
+              ? (
+                <a className="link-azul" href={o.deliveryUrl} target="_blank" rel="noreferrer">
+                  <Icon name="external" size={14} /> Inspeccionar entrega
+                </a>
+              )
+              : <p className="hint">Sin entrega registrada aun.</p>
+            }
             <div className="applicant-actions" style={{ marginTop: 14 }}>
               <button className="btn btn-ghost btn-sm">Ver historial de chat</button>
               <button className="btn btn-primary btn-sm">Resolver disputa</button>
@@ -118,32 +234,56 @@ function Arbitration() {
   )
 }
 
-/* ---------- CUENTAS (baneo, PRD §7.2) ---------- */
+/* ---- CUENTAS (baneo, PRD 7.2) ---- */
+
 function Accounts() {
-  const [accounts, setAccounts] = useState(() => listAll().filter((a) => a.role !== 'admin'))
-  const [filter, setFilter] = useState('all') // all | brand | creator | banned
-  const [search, setSearch] = useState('')
+  const [accounts, setAccounts]   = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [filter, setFilter]       = useState('all')
+  const [search, setSearch]       = useState('')
   const [banTarget, setBanTarget] = useState(null)
 
-  const refresh = () => setAccounts(listAll().filter((a) => a.role !== 'admin'))
+  const fetchAccounts = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('perfiles')
+      .select('id, nombre, email, rol, banned, ban_reason, created_at')
+      .neq('rol', 'admin')
+      .order('created_at', { ascending: false })
+    if (data) setAccounts(data)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchAccounts() }, [fetchAccounts])
 
   const q = search.trim().toLowerCase()
   const list = accounts.filter((a) => {
-    if (filter === 'brand' && a.role !== 'brand') return false
-    if (filter === 'creator' && a.role !== 'creator') return false
-    if (filter === 'banned' && !a.banned) return false
-    if (q && !`${a.name} ${a.email}`.toLowerCase().includes(q)) return false
+    if (filter === 'brand'   && a.rol !== 'brand')   return false
+    if (filter === 'creator' && a.rol !== 'creator') return false
+    if (filter === 'banned'  && !a.banned)           return false
+    if (q && !(a.nombre + ' ' + a.email).toLowerCase().includes(q)) return false
     return true
   })
 
-  const onBan = (reason) => {
-    banAccount(banTarget.email, reason)
+  const onBan = async (reason) => {
+    await supabase
+      .from('perfiles')
+      .update({ banned: true, ban_reason: reason, banned_at: new Date().toISOString() })
+      .eq('id', banTarget.id)
     setBanTarget(null)
-    refresh()
+    fetchAccounts()
   }
-  const onUnban = (acc) => {
-    unbanAccount(acc.email)
-    refresh()
+
+  const onUnban = async (acc) => {
+    await supabase
+      .from('perfiles')
+      .update({ banned: false, ban_reason: null, banned_at: null })
+      .eq('id', acc.id)
+    fetchAccounts()
+  }
+
+  if (loading) {
+    return <div className="card card-pad center"><p className="text-muted">Cargando...</p></div>
   }
 
   return (
@@ -151,7 +291,12 @@ function Accounts() {
       <div className="market-toolbar">
         <div className="market-search">
           <Icon name="users" size={16} />
-          <input className="input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre o correo…" />
+          <input
+            className="input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nombre o correo..."
+          />
         </div>
         <div className="market-filters">
           <select className="select" value={filter} onChange={(e) => setFilter(e.target.value)}>
@@ -163,23 +308,31 @@ function Accounts() {
         </div>
       </div>
 
-      <p className="text-muted market-count">{list.length} cuenta{list.length !== 1 && 's'}</p>
+      <p className="text-muted market-count">
+        {list.length} cuenta{list.length !== 1 ? 's' : ''}
+      </p>
 
       {list.length === 0 ? (
-        <div className="card card-pad center"><p className="text-muted">Sin cuentas que coincidan con los filtros.</p></div>
+        <div className="card card-pad center">
+          <p className="text-muted">Sin cuentas que coincidan con los filtros.</p>
+        </div>
       ) : (
         <div className="accounts-list">
           {list.map((a) => (
-            <div key={a.email} className={`account-row${a.banned ? ' is-banned' : ''}`}>
-              <div className="dash-avatar">{(a.name || '?').charAt(0)}</div>
+            <div key={a.id} className={'account-row' + (a.banned ? ' is-banned' : '')}>
+              <div className="dash-avatar">{(a.nombre || '?').charAt(0)}</div>
               <div className="account-row-main">
-                <strong>{a.name}</strong>
+                <strong>{a.nombre}</strong>
                 <span className="text-muted">{a.email}</span>
               </div>
               <div className="account-row-meta">
-                {a.role === 'brand' && <span className="badge badge-rosa"><span className="dot" /> Marca</span>}
-                {a.role === 'creator' && <span className="badge badge-solar"><span className="dot" /> Creadora</span>}
-                {a.banned && <span className="badge badge-muted" style={{ color: 'var(--naranja)' }}><span className="dot" /> Suspendida</span>}
+                {a.rol === 'brand'   && <span className="badge badge-rosa"><span className="dot" /> Marca</span>}
+                {a.rol === 'creator' && <span className="badge badge-solar"><span className="dot" /> Creadora</span>}
+                {a.banned && (
+                  <span className="badge badge-muted" style={{ color: 'var(--naranja)' }}>
+                    <span className="dot" /> Suspendida
+                  </span>
+                )}
               </div>
               <div className="account-row-actions">
                 {a.banned
@@ -204,20 +357,31 @@ function BanModal({ target, onClose, onConfirm }) {
     <Modal
       open={!!target}
       onClose={onClose}
-      title={`Suspender cuenta · ${target.name}`}
+      title={'Suspender cuenta - ' + target.nombre}
       footer={
         <>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-grad btn-warn btn-sm" disabled={!reason.trim()} onClick={() => onConfirm(reason.trim())}>Suspender cuenta</button>
+          <button
+            className="btn btn-grad btn-warn btn-sm"
+            disabled={!reason.trim()}
+            onClick={() => onConfirm(reason.trim())}
+          >
+            Suspender cuenta
+          </button>
         </>
       }
     >
       <div className="info-banner">
-        <strong>PRD §7.2:</strong> al suspender, la cuenta no podrá iniciar sesión. La acción es reversible desde este mismo panel.
+        <strong>PRD 7.2:</strong> al suspender, la cuenta no podra iniciar sesion. La accion es reversible.
       </div>
       <div className="field">
-        <label>Motivo de la suspensión</label>
-        <textarea className="textarea" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej. intento de desviar transacción fuera de Stripe, lenguaje ofensivo en chat, entregables vacíos reiterados…" />
+        <label>Motivo de la suspension</label>
+        <textarea
+          className="textarea"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Ej. intento de desviar transaccion fuera de Stripe..."
+        />
       </div>
     </Modal>
   )
