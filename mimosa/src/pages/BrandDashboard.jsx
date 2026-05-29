@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { useStore } from '../context/StoreContext.jsx'
 import { supabase } from '../lib/supabase.js'
 import UrgentBanner from '../components/UrgentBanner.jsx'
-import { APPLICANTS, CHAT_MESSAGES, STATUS_MAP, quote, MIN_VIDEO_PRICE } from '../data/mock.js'
+import { CHAT_MESSAGES, STATUS_MAP, quote, MIN_VIDEO_PRICE } from '../data/mock.js'
 
 const PLAN_LIMITS = { foru: 3, starter: 6, pro: 12 }
 
@@ -55,7 +55,7 @@ export default function BrandDashboard() {
     >
       {tab !== 'chat' && <UrgentBanner role="brand" onJumpToOrders={() => setTab('orders')} />}
       {tab === 'campaigns'  && <Campaigns brandId={user?.id} plan={plan} onOpenApplicants={() => setTab('applicants')} />}
-      {tab === 'applicants' && <Applicants onOpenChat={() => setTab('chat')} />}
+      {tab === 'applicants' && <Applicants brandId={user?.id} onOpenChat={() => setTab('chat')} />}
       {tab === 'chat'       && <Chat onCreated={() => setTab('orders')} />}
       {tab === 'orders'     && <Orders />}
     </DashboardShell>
@@ -304,52 +304,148 @@ function CampaignDetailModal({ campaign, onClose, onOpenApplicants }) {
   )
 }
 
-/* ---- POSTULANTES (aun mock, se migra en Fase C) ---- */
+/* ---- POSTULANTES ---- */
 
-function Applicants({ onOpenChat }) {
-  const [portfolio, setPortfolio] = useState(null)
+function Applicants({ brandId, onOpenChat }) {
+  const [campaigns, setCampaigns]   = useState([])
+  const [selectedId, setSelectedId] = useState(null)
+  const [applicants, setApplicants] = useState([])
+  const [loadingC, setLoadingC]     = useState(true)
+  const [loadingA, setLoadingA]     = useState(false)
+  const [portfolio, setPortfolio]   = useState(null)
+
+  // Cargar campanas de la marca para el selector
+  useEffect(() => {
+    if (!brandId || !supabase) return
+    setLoadingC(true)
+    supabase
+      .from('campanas')
+      .select('id, titulo')
+      .eq('marca_id', brandId)
+      .in('status', ['activa', 'pendiente', 'cerrada'])
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) {
+          setCampaigns(data)
+          if (data.length > 0) setSelectedId(data[0].id)
+        }
+        setLoadingC(false)
+      })
+  }, [brandId])
+
+  // Cargar postulantes de la campana seleccionada
+  useEffect(() => {
+    if (!selectedId || !supabase) return
+    setLoadingA(true)
+    supabase
+      .from('postulaciones')
+      .select('id, propuesta, precio_video, created_at, creadoras ( perfil_id, portafolio_url, status, perfiles ( nombre ) )')
+      .eq('campana_id', selectedId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) setApplicants(data)
+        setLoadingA(false)
+      })
+  }, [selectedId])
+
+  const selectedCamp = campaigns.find((c) => c.id === selectedId)
+
+  if (loadingC) {
+    return <div className="card card-pad center"><p className="text-muted">Cargando...</p></div>
+  }
+
+  if (campaigns.length === 0) {
+    return (
+      <div className="card card-pad center">
+        <p className="text-muted">
+          No tienes campanas activas aun. Crea una campana para empezar a recibir postulaciones.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <>
-      <p className="text-muted toolbar">
-        Campana: <strong>Unboxing serum facial - linea Glow</strong>
-      </p>
-      <div className="grid cards-grid">
-        {APPLICANTS.map((a) => {
-          const q = quote(a.price * 3)
-          return (
-            <div key={a.id} className="card card-pad applicant-card">
-              <div className="applicant-head">
-                <div className="dash-avatar lg">{a.name.charAt(0)}</div>
-                <div>
-                  <strong>{a.name}</strong>
-                  <div className="text-muted rating-inline">
-                    {a.handle} - <Icon name="star" size={12} color="var(--solar)" /> {a.rating}
-                  </div>
-                </div>
-                {a.verified
-                  ? <span className="badge badge-verde"><span className="dot" /> Verificada</span>
-                  : <span className="badge badge-solar"><span className="dot" /> Pendiente</span>}
-              </div>
-              <p className="applicant-proposal">"{a.proposal}"</p>
-              <div className="applicant-price">
-                <span>Propuesta: <strong>${a.price} MXN/video</strong></span>
-                <span className="text-muted">Total marca aprox. ${q.brandPays.toLocaleString()}</span>
-              </div>
-              <div className="applicant-actions">
-                <button className="btn btn-ghost btn-sm" onClick={() => setPortfolio(a)}>Ver portafolio</button>
-                <button className="btn btn-primary btn-sm" onClick={onOpenChat}>Iniciar chat</button>
-              </div>
-            </div>
-          )
-        })}
+      {/* Selector de campana */}
+      <div className="toolbar">
+        <div className="field" style={{ margin: 0, minWidth: 260 }}>
+          <select
+            className="select"
+            value={selectedId ?? ''}
+            onChange={(e) => setSelectedId(e.target.value)}
+          >
+            {campaigns.map((c) => (
+              <option key={c.id} value={c.id}>{c.titulo}</option>
+            ))}
+          </select>
+        </div>
+        <p className="text-muted">
+          {loadingA ? 'Cargando...' : (applicants.length + ' postulante' + (applicants.length !== 1 ? 's' : ''))}
+        </p>
       </div>
+
+      {loadingA ? (
+        <div className="card card-pad center"><p className="text-muted">Cargando postulantes...</p></div>
+      ) : applicants.length === 0 ? (
+        <div className="card card-pad center">
+          <Icon name="users" size={32} color="var(--rosa)" />
+          <p className="text-muted" style={{ marginTop: 12 }}>
+            Aun no hay postulaciones para esta campana.
+          </p>
+        </div>
+      ) : (
+        <div className="grid cards-grid">
+          {applicants.map((a) => {
+            const nombre    = a.creadoras?.perfiles?.nombre ?? 'Creadora'
+            const portfolio = a.creadoras?.portafolio_url
+            const verified  = a.creadoras?.status === 'verificado'
+            const q         = quote(a.precio_video * (selectedCamp?.videos ?? 1))
+            return (
+              <div key={a.id} className="card card-pad applicant-card">
+                <div className="applicant-head">
+                  <div className="dash-avatar lg">{nombre.charAt(0)}</div>
+                  <div>
+                    <strong>{nombre}</strong>
+                    <div className="text-muted" style={{ fontSize: 13 }}>
+                      ${a.precio_video} MXN/video
+                    </div>
+                  </div>
+                  {verified
+                    ? <span className="badge badge-verde"><span className="dot" /> Verificada</span>
+                    : <span className="badge badge-solar"><span className="dot" /> Pendiente</span>}
+                </div>
+                {a.propuesta && (
+                  <p className="applicant-proposal">"{a.propuesta}"</p>
+                )}
+                <div className="applicant-price">
+                  <span>Por video: <strong>${a.precio_video} MXN</strong></span>
+                  <span className="text-muted">Total marca aprox. ${q.brandPays.toLocaleString()}</span>
+                </div>
+                <div className="applicant-actions">
+                  {portfolio && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setPortfolio({ nombre, url: portfolio })}
+                    >
+                      Ver portafolio
+                    </button>
+                  )}
+                  <button className="btn btn-primary btn-sm" onClick={onOpenChat}>
+                    Iniciar chat
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <Modal
         open={!!portfolio}
         onClose={() => setPortfolio(null)}
-        title={portfolio ? ('Portafolio - ' + portfolio.name) : ''}
+        title={portfolio ? ('Portafolio - ' + portfolio.nombre) : ''}
         footer={
-          <a className="btn btn-grad btn-sm" href={portfolio?.portfolio} target="_blank" rel="noreferrer">
+          <a className="btn btn-grad btn-sm" href={portfolio?.url} target="_blank" rel="noreferrer">
             Abrir en nueva pestana
           </a>
         }
@@ -359,7 +455,7 @@ function Applicants({ onOpenChat }) {
             <div className="portfolio-frame">
               <Icon name="video" size={42} color="var(--violeta)" />
               <p>Vista previa del portafolio externo</p>
-              <code>{portfolio.portfolio}</code>
+              <code>{portfolio.url}</code>
             </div>
             <p className="text-muted">El portafolio se abre en un modal para no perder tu flujo de revision.</p>
           </div>
