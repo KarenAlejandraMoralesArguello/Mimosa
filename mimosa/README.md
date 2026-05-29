@@ -35,3 +35,6 @@ VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...   # se llena en Fase 3 (pagos)
 ```
 
 En Netlify agregar las mismas variables en **Site settings → Environment variables**. esto es importante pero ya se hizo
+cd mimosa
+npm install
+npm run dev
