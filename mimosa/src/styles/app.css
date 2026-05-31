@@ -390,9 +390,11 @@
 .camp-foot { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 14px; }
 
 .applicant-card { display: flex; flex-direction: column; gap: 12px; }
-.applicant-head { display: flex; align-items: center; gap: 12px; }
-.applicant-head > div:nth-child(2) { flex: 1; }
-.applicant-head strong { color: var(--ink); display: block; }
+.applicant-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.applicant-head > div:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; }
+.applicant-head strong { color: var(--ink); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.applicant-head .text-muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.applicant-head .badge { flex-shrink: 0; margin-left: auto; }
 .applicant-proposal { font-size: 14px; color: var(--ink-soft); font-style: italic; background: var(--bg); padding: 12px 14px; border-radius: 12px; margin: 0; }
 .applicant-price { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
 .applicant-actions { display: flex; gap: 10px; }
