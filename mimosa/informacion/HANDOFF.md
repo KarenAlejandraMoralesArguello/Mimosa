@@ -184,7 +184,7 @@ Estos son trabajos rápidos (≤ 1 día cada uno) que cierran el demo pero no so
 ## 7. Lo grande que falta — Backend (4 fases)
 
 ### **Fase 1: Fundamentos de Supabase** (2-3 sesiones)
-1. Crear proyecto en Supabase + configurar variables en Netlify (`VITE_MIMOSA_SUPABASE_URL`, `VITE_MIMOSA_SUPABASE_ANON_KEY`).
+1. Crear proyecto en Supabase + configurar variables en Netlify (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`).
 2. **Diseñar el esquema relacional** (sugerencia):
    - `perfiles` (id, auth_id, rol enum, nombre, email, banned, ban_reason, created_at)
    - `marcas` (perfil_id, nombre_comercial, plan, stripe_customer_id, trial_ends_at)

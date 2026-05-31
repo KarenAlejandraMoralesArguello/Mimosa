@@ -123,8 +123,8 @@ cp .env.example .env.local
 Luego edita `.env.local` con tus valores reales:
 
 ```env
-VITE_MIMOSA_SUPABASE_URL=https://your-project-ref.supabase.co
-VITE_MIMOSA_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_publishable_key
 ```
 
