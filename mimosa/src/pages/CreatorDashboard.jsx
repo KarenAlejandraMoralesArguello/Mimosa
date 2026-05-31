@@ -98,14 +98,28 @@ function Home({ status, userId, goMarket, onStatusChange }) {
         .from('postulaciones')
         .select('id', { count: 'exact', head: true })
         .eq('creadora_id', userId),
-    ]).then(([activas, ingresos, posts]) => {
+      // Calificación: promedio basado en correcciones de órdenes completadas
+      // (5 sin correcciones, 4 con 1, 3 con 2)
+      supabase
+        .from('ordenes')
+        .select('corrections_used')
+        .eq('creadora_id', userId)
+        .eq('status', 'completado'),
+    ]).then(([activas, ingresos, posts, completadas]) => {
       const totalIngresos = (ingresos.data ?? []).reduce(
         (sum, o) => sum + Number(o.creator_gets), 0
       )
+      const ordenesOk = completadas.data ?? []
+      let calificacion = null
+      if (ordenesOk.length > 0) {
+        const suma = ordenesOk.reduce((s, o) => s + (5 - (o.corrections_used ?? 0)), 0)
+        calificacion = (suma / ordenesOk.length).toFixed(1)
+      }
       setStats({
-        activas:      activas.count  ?? 0,
-        ingresos:     totalIngresos,
+        activas:       activas.count ?? 0,
+        ingresos:      totalIngresos,
         postulaciones: posts.count   ?? 0,
+        calificacion,
       })
     })
   }, [status, userId])
@@ -231,7 +245,7 @@ function Home({ status, userId, goMarket, onStatusChange }) {
           value={stats ? String(stats.postulaciones) : '…'}
           grad="var(--grad-solar-rosa)"
         />
-        <Stat label="Calificación" value="4.9" grad="var(--grad-violeta-azul)" />
+        <Stat label="Calificación" value={stats ? (stats.calificacion ?? '—') : '…'} grad="var(--grad-violeta-azul)" />
       </div>
     </>
   )
