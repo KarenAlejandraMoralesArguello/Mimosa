@@ -212,21 +212,17 @@ function CampaignReview({ onCountChange }) {
       .select('id, titulo, brief, estilo, duracion_seg, videos, presupuesto, created_at, marcas ( nombre_comercial )')
       .eq('status', 'pendiente')
       .order('created_at', { ascending: true })
-    if (!error && data) {
-      setList(data)
-      onCountChange(data.length)
-    }
+    if (!error && data) setList(data)
     setLoading(false)
-  }, [onCountChange])
+  }, [])
 
   useEffect(() => { fetchPending() }, [fetchPending])
 
+  // Sincroniza el badge del nav cuando la lista cambia (evita setState-during-render).
+  useEffect(() => { onCountChange(list.length) }, [list, onCountChange])
+
   const remove = (id) => {
-    setList((prev) => {
-      const next = prev.filter((c) => c.id !== id)
-      onCountChange(next.length)
-      return next
-    })
+    setList((prev) => prev.filter((c) => c.id !== id))
   }
 
   const aprobar = async (campana) => {

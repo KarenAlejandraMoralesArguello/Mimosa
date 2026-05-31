@@ -13,6 +13,7 @@ import { Terms, Privacy } from './pages/Legal.jsx'
 import BrandDashboard from './pages/BrandDashboard.jsx'
 import CreatorDashboard from './pages/CreatorDashboard.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
+import CreatorProfile from './pages/CreatorProfile.jsx'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ProtectedRoute — Middleware de autenticación y autorización
@@ -111,6 +112,9 @@ export default function App() {
         <Route path="/cuenta" element={
           <ProtectedRoute><Account /></ProtectedRoute>
         } />
+
+        {/* Perfil público de creadora — sin auth requerida */}
+        <Route path="/c/:id" element={<CreatorProfile />} />
 
         <Route path="*" element={<NotFound />} />
       </Routes>

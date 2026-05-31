@@ -29,6 +29,8 @@ npm run dev   # http://localhost:5173
 - JWT middleware (ProtectedRoute por rol)
 - Validaciones de formularios (email, contraseña, campos obligatorios)
 - Ojito para ver contraseñas en todos los formularios
+- Notificaciones in-app en tiempo real (campanita con badge, dropdown, marcar leídas)
+- Edge Function `enviar-notificacion` deployada (activa con RESEND_API_KEY)
 
 ---
 
@@ -79,36 +81,34 @@ VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
 
 ---
 
-### 4. Emails transaccionales con Resend (requiere dominio propio)
+### 4. Emails de notificaciones con Resend (requiere API key)
 
-**Prerequisitos:**
-- Dominio propio (ej. `mimosacolab.com`) verificado en [resend.com](https://resend.com)
-- Sin dominio propio solo se puede usar `onboarding@resend.dev` para pruebas (solo envía a tu propio correo)
+La infraestructura de emails ya está construida y deployada:
+- Edge Function `enviar-notificacion` — deployada en Supabase, lista para usar
+- Se dispara automáticamente cada vez que llega una notificación nueva en tiempo real
+- Cubre todos los eventos: postulante, mensaje, aprobación, orden, etc.
 
-**Pasos cuando tengas dominio:**
-1. Crear cuenta en Resend (plan gratuito: 100 emails/día)
-2. Verificar el dominio en Resend → Domains → Add Domain
+**Solo falta agregar la API key:**
+
+1. Crear cuenta en [resend.com](https://resend.com) (plan gratuito: 3,000 emails/mes)
+2. Verificar el dominio `mimosacolab.com` en Resend → Domains (o usar `onboarding@resend.dev` para pruebas)
 3. Obtener la API Key en Resend → API Keys → Create
-4. Instalar Supabase CLI: `npm install -g supabase && supabase login`
-5. Guardar las claves en Supabase (nunca en el código):
-   ```bash
-   supabase secrets set RESEND_API_KEY=re_xxxxxxxx
-   supabase secrets set FROM_EMAIL=noreply@mimosacolab.com
+4. Agregar los secrets en Supabase → proyecto → **Edge Functions → Secrets**:
    ```
-6. Desplegar la Edge Function ya creada:
-   ```bash
-   supabase functions deploy notificar-validacion
+   RESEND_API_KEY = re_xxxxxxxxxxxxxxxx
+   FROM_EMAIL     = noreply@mimosacolab.com
    ```
 
-**Emails que se enviarán automáticamente:**
-- ✅ Aprobación de creadora (Edge Function `notificar-validacion` ya creada)
-- ✅ Rechazo con feedback (Edge Function `notificar-validacion` ya creada)
-- ⏳ Bienvenida al registrarse
-- ⏳ Orden creada (para creadora)
-- ⏳ Entrega recibida (para marca)
-- ⏳ Pago liberado (para creadora)
+> Una vez agregada la key, los emails empiezan a llegar automáticamente sin ningún cambio de código.
 
-> Mientras no esté configurado el sistema funciona igual — el email simplemente no se envía.
+**Emails que se envían:**
+- Nueva postulante a una campaña (marca)
+- Nuevo mensaje de chat (ambas partes)
+- Perfil aprobado / necesita ajustes (creadora)
+- Nueva orden recibida (creadora)
+- Orden en curso / entregada / completada / cancelada (partes relevantes)
+- Nueva creadora por validar (admin)
+- Nueva campaña por revisar (admin)
 
 ---
 

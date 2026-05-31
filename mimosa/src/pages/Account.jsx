@@ -1,15 +1,15 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Logo from '../components/Logo.jsx'
 import Icon from '../components/Icon.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
-import { updateAccount, changePassword } from '../data/accounts.js'
+import { supabase } from '../lib/supabase.js'
 import { PLANS } from '../data/mock.js'
 
 // /cuenta — Mi Cuenta / Ajustes.
 // Las secciones disponibles cambian según el rol del usuario.
 export default function Account() {
-  const { user, login, logout } = useAuth()
+  const { user, patchUser, logout } = useAuth()
   const navigate = useNavigate()
   const homePath = user?.role === 'brand' ? '/marca' : user?.role === 'creator' ? '/creadora' : '/admin'
 
@@ -37,10 +37,10 @@ export default function Account() {
         </div>
 
         <div className="account-grid">
-          <ProfileSection user={user} onUpdate={(updated) => login(updated)} />
+          <ProfileSection user={user} patchUser={patchUser} />
           <SecuritySection user={user} />
-          {user.role === 'brand' && <PlanSection user={user} onUpdate={(updated) => login(updated)} />}
-          {user.role === 'creator' && <CreatorBankSection user={user} onUpdate={(updated) => login(updated)} />}
+          {user.role === 'brand'   && <PlanSection    user={user} patchUser={patchUser} />}
+          {user.role === 'creator' && <CreatorSection user={user} patchUser={patchUser} />}
           <DangerSection onLogout={() => { logout(); navigate('/') }} />
         </div>
       </main>
@@ -49,22 +49,33 @@ export default function Account() {
 }
 
 function RoleBadge({ role }) {
-  if (role === 'brand') return <span className="badge badge-rosa"><span className="dot" /> Marca</span>
+  if (role === 'brand')   return <span className="badge badge-rosa"><span className="dot" /> Marca</span>
   if (role === 'creator') return <span className="badge badge-solar"><span className="dot" /> Creadora</span>
   return <span className="badge badge-violeta"><span className="dot" /> Equipo Mimosa</span>
 }
 
 /* ---------- Perfil ---------- */
-function ProfileSection({ user, onUpdate }) {
+function ProfileSection({ user, patchUser }) {
   const [name, setName] = useState(user.name)
-  const [msg, setMsg] = useState('')
+  const [msg,  setMsg]  = useState('')
+  const [err,  setErr]  = useState('')
+  const [busy, setBusy] = useState(false)
   const dirty = name.trim() !== user.name
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
-    if (!name.trim()) return
-    const updated = updateAccount(user.email, { name: name.trim() })
-    onUpdate(updated)
+    if (!name.trim() || !dirty) return
+    setBusy(true); setErr(''); setMsg('')
+
+    const { error } = await supabase
+      .from('perfiles')
+      .update({ nombre: name.trim() })
+      .eq('id', user.id)
+
+    setBusy(false)
+    if (error) { setErr('No se pudo guardar. Intenta de nuevo.'); return }
+
+    patchUser({ name: name.trim() })
     setMsg('Perfil actualizado.')
     setTimeout(() => setMsg(''), 2000)
   }
@@ -84,28 +95,50 @@ function ProfileSection({ user, onUpdate }) {
         <input className="input" value={user.email} disabled />
         <p className="hint">Para cambiar tu correo, contáctanos por WhatsApp.</p>
       </div>
+      {err && <p className="err">{err}</p>}
       {msg && <p className="hint hint-ok"><Icon name="check" size={13} color="var(--verde)" strokeWidth={2.5} /> {msg}</p>}
-      <button className="btn btn-grad btn-sm" type="submit" disabled={!dirty}>Guardar cambios</button>
+      <button className="btn btn-grad btn-sm" type="submit" disabled={!dirty || busy}>
+        {busy ? 'Guardando…' : 'Guardar cambios'}
+      </button>
     </form>
   )
 }
 
 /* ---------- Seguridad ---------- */
 function SecuritySection({ user }) {
-  const [cur, setCur] = useState('')
+  const [cur,  setCur]  = useState('')
   const [next, setNext] = useState('')
-  const [next2, setNext2] = useState('')
-  const [err, setErr] = useState('')
-  const [msg, setMsg] = useState('')
+  const [next2,setNext2]= useState('')
+  const [err,  setErr]  = useState('')
+  const [msg,  setMsg]  = useState('')
+  const [busy, setBusy] = useState(false)
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
     setErr(''); setMsg('')
-    if (!cur) { setErr('Ingresa tu contraseña actual.'); return }
-    if (next.length < 8) { setErr('La nueva contraseña debe tener al menos 8 caracteres.'); return }
+    if (!cur)              { setErr('Ingresa tu contraseña actual.'); return }
+    if (next.length < 8)   { setErr('La nueva contraseña debe tener al menos 8 caracteres.'); return }
     if (!/[A-Za-z]/.test(next) || !/\d/.test(next)) { setErr('La contraseña debe combinar letras y números.'); return }
-    if (next !== next2) { setErr('Las contraseñas no coinciden.'); return }
-    changePassword(user.email, cur, next)
+    if (next !== next2)    { setErr('Las contraseñas no coinciden.'); return }
+
+    setBusy(true)
+
+    // Verificar contraseña actual re-autenticando
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email:    user.email,
+      password: cur,
+    })
+    if (signInError) {
+      setBusy(false)
+      setErr('La contraseña actual es incorrecta.')
+      return
+    }
+
+    // Cambiar a la nueva contraseña
+    const { error: updateError } = await supabase.auth.updateUser({ password: next })
+    setBusy(false)
+    if (updateError) { setErr('No se pudo cambiar la contraseña. Intenta de nuevo.'); return }
+
     setMsg('Contraseña actualizada.')
     setCur(''); setNext(''); setNext2('')
     setTimeout(() => setMsg(''), 2500)
@@ -131,24 +164,60 @@ function SecuritySection({ user }) {
       </div>
       {err && <p className="err">{err}</p>}
       {msg && <p className="hint hint-ok"><Icon name="check" size={13} color="var(--verde)" strokeWidth={2.5} /> {msg}</p>}
-      <button className="btn btn-grad btn-sm" type="submit">Cambiar contraseña</button>
+      <button className="btn btn-grad btn-sm" type="submit" disabled={busy}>
+        {busy ? 'Verificando…' : 'Cambiar contraseña'}
+      </button>
     </form>
   )
 }
 
 /* ---------- Plan (solo marca) ---------- */
-function PlanSection({ user, onUpdate }) {
+function PlanSection({ user, patchUser }) {
   const [plan, setPlan] = useState(user.plan || 'starter')
-  const [msg, setMsg] = useState('')
+  const [msg,  setMsg]  = useState('')
+  const [err,  setErr]  = useState('')
+  const [busy, setBusy] = useState(false)
+  const [loaded, setLoaded] = useState(false)
   const dirty = plan !== (user.plan || 'starter')
   const current = PLANS.find((p) => p.id === plan)
 
-  const save = () => {
-    const updated = updateAccount(user.email, { plan })
-    onUpdate(updated)
+  // Carga el plan real desde marcas al montar
+  useEffect(() => {
+    supabase
+      .from('marcas')
+      .select('plan')
+      .eq('perfil_id', user.id)
+      .single()
+      .then(({ data }) => {
+        if (data?.plan) {
+          setPlan(data.plan)
+          if (!user.plan) patchUser({ plan: data.plan })
+        }
+        setLoaded(true)
+      })
+  }, [user.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const save = async () => {
+    setBusy(true); setErr(''); setMsg('')
+
+    const { error } = await supabase
+      .from('marcas')
+      .update({ plan })
+      .eq('perfil_id', user.id)
+
+    setBusy(false)
+    if (error) { setErr('No se pudo guardar el plan. Intenta de nuevo.'); return }
+
+    patchUser({ plan })
     setMsg('Plan actualizado. El cobro prorrateado aparecerá en tu próxima factura.')
     setTimeout(() => setMsg(''), 3500)
   }
+
+  if (!loaded) return (
+    <div className="account-card" style={{ opacity: 0.5 }}>
+      <div className="account-card-head"><h2>Plan de suscripción</h2></div>
+    </div>
+  )
 
   return (
     <div className="account-card">
@@ -168,49 +237,167 @@ function PlanSection({ user, onUpdate }) {
           </label>
         ))}
       </div>
+      {err && <p className="err">{err}</p>}
       {msg && <p className="hint hint-ok"><Icon name="check" size={13} color="var(--verde)" strokeWidth={2.5} /> {msg}</p>}
-      <button className="btn btn-grad btn-sm" disabled={!dirty} onClick={save}>Cambiar plan</button>
+      <button className="btn btn-grad btn-sm" disabled={!dirty || busy} onClick={save}>
+        {busy ? 'Guardando…' : 'Cambiar plan'}
+      </button>
     </div>
   )
 }
 
 /* ---------- Portafolio + CLABE (solo creadora) ---------- */
-function CreatorBankSection({ user, onUpdate }) {
-  const [portfolio, setPortfolio] = useState(user.portfolio || '')
-  const [clabe, setClabe] = useState(user.clabe || '')
-  const [msg, setMsg] = useState('')
-  const [err, setErr] = useState('')
+function CreatorSection({ user, patchUser }) {
+  const [portfolio,   setPortfolio]   = useState(user.portfolio || '')
+  const [clabe,       setClabe]       = useState('')
+  const [clabeGuardada, setClabeGuardada] = useState(false) // ¿ya tiene CLABE?
+  const [editClabe,   setEditClabe]   = useState(false)
+  const [msg,   setMsg]   = useState('')
+  const [err,   setErr]   = useState('')
+  const [msgC,  setMsgC]  = useState('')
+  const [errC,  setErrC]  = useState('')
+  const [busy,  setBusy]  = useState(false)
+  const [busyC, setBusyC] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
-  const save = () => {
+  useEffect(() => {
+    supabase
+      .from('creadoras')
+      .select('portafolio_url, clabe_enc')
+      .eq('perfil_id', user.id)
+      .single()
+      .then(({ data }) => {
+        if (data?.portafolio_url) {
+          setPortfolio(data.portafolio_url)
+          if (!user.portfolio) patchUser({ portfolio: data.portafolio_url })
+        }
+        setClabeGuardada(data?.clabe_enc != null)
+        setLoaded(true)
+      })
+  }, [user.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const savePortfolio = async () => {
     setErr(''); setMsg('')
-    if (portfolio && !/^https?:\/\/.+\..+/.test(portfolio.trim())) { setErr('Portafolio: URL inválida.'); return }
-    if (clabe && !/^\d{18}$/.test(clabe)) { setErr('La CLABE debe tener 18 dígitos.'); return }
-    const updated = updateAccount(user.email, { portfolio: portfolio.trim(), clabe })
-    onUpdate(updated)
-    setMsg('Datos guardados. La CLABE queda encriptada y vinculada a Stripe Connect.')
-    setTimeout(() => setMsg(''), 3500)
+    if (portfolio && !/^https?:\/\/.+\..+/.test(portfolio.trim())) {
+      setErr('URL de portafolio inválida.')
+      return
+    }
+    setBusy(true)
+    const { error } = await supabase
+      .from('creadoras')
+      .update({ portafolio_url: portfolio.trim() })
+      .eq('perfil_id', user.id)
+    setBusy(false)
+    if (error) { setErr('No se pudo guardar. Intenta de nuevo.'); return }
+    patchUser({ portfolio: portfolio.trim() })
+    setMsg('Portafolio actualizado.')
+    setTimeout(() => setMsg(''), 3000)
   }
 
-  return (
-    <div className="account-card">
-      <div className="account-card-head">
-        <h2>Portafolio y cuenta bancaria</h2>
-        <p className="text-muted">Necesarios para aplicar a campañas y recibir pagos.</p>
-      </div>
-      <div className="field">
-        <label>Enlace al portafolio</label>
-        <input className="input" value={portfolio} onChange={(e) => setPortfolio(e.target.value)} placeholder="https://behance.net/tuperfil" />
-      </div>
-      <div className="field">
-        <label>CLABE (18 dígitos)</label>
-        <input className="input" inputMode="numeric" maxLength={18} value={clabe}
-          onChange={(e) => setClabe(e.target.value.replace(/\D/g, ''))} placeholder="012345678901234567" />
-        <p className="hint">Se almacena encriptada y vinculada a Stripe Connect para dispersión automática.</p>
-      </div>
-      {err && <p className="err">{err}</p>}
-      {msg && <p className="hint hint-ok"><Icon name="check" size={13} color="var(--verde)" strokeWidth={2.5} /> {msg}</p>}
-      <button className="btn btn-grad btn-sm" onClick={save}>Guardar</button>
+  const saveClabe = async () => {
+    setErrC(''); setMsgC('')
+    if (!/^\d{18}$/.test(clabe)) { setErrC('La CLABE debe tener exactamente 18 dígitos.'); return }
+    setBusyC(true)
+    const { error } = await supabase.rpc('guardar_clabe', {
+      p_perfil_id: user.id,
+      p_clabe:     clabe,
+    })
+    setBusyC(false)
+    if (error) { setErrC('No se pudo guardar la CLABE. Intenta de nuevo.'); return }
+    setClabeGuardada(true)
+    setEditClabe(false)
+    setClabe('')
+    setMsgC('CLABE guardada y encriptada correctamente.')
+    setTimeout(() => setMsgC(''), 3500)
+  }
+
+  if (!loaded) return (
+    <div className="account-card" style={{ opacity: 0.5 }}>
+      <div className="account-card-head"><h2>Portafolio y cuenta bancaria</h2></div>
     </div>
+  )
+
+  return (
+    <>
+      {/* Portafolio */}
+      <div className="account-card">
+        <div className="account-card-head">
+          <h2>Portafolio</h2>
+          <p className="text-muted">Necesario para aplicar a campañas.</p>
+        </div>
+        <div className="field">
+          <label>Enlace al portafolio</label>
+          <input
+            className="input"
+            value={portfolio}
+            onChange={(e) => setPortfolio(e.target.value)}
+            placeholder="https://behance.net/tuperfil"
+          />
+        </div>
+        {err && <p className="err">{err}</p>}
+        {msg && <p className="hint hint-ok"><Icon name="check" size={13} color="var(--verde)" strokeWidth={2.5} /> {msg}</p>}
+        <button className="btn btn-grad btn-sm" disabled={busy} onClick={savePortfolio}>
+          {busy ? 'Guardando…' : 'Guardar portafolio'}
+        </button>
+      </div>
+
+      {/* CLABE */}
+      <div className="account-card">
+        <div className="account-card-head">
+          <h2>CLABE interbancaria</h2>
+          <p className="text-muted">
+            {clabeGuardada
+              ? 'Tu CLABE está registrada y encriptada con pgsodium.'
+              : 'Necesaria para recibir pagos por tus órdenes completadas.'}
+          </p>
+        </div>
+
+        {clabeGuardada && !editClabe ? (
+          <div className="field">
+            <label>CLABE registrada</label>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <input className="input" value="•••• •••• •••• •••• ••" disabled style={{ flex: 1 }} />
+              <button className="btn btn-ghost btn-sm" onClick={() => setEditClabe(true)}>
+                Actualizar
+              </button>
+            </div>
+            <p className="hint">
+              <Icon name="lock" size={12} color="var(--verde)" /> Encriptada con AES-256 — nunca se expone en texto plano.
+            </p>
+          </div>
+        ) : (
+          <div className="field">
+            <label>CLABE (18 dígitos)</label>
+            <input
+              className="input"
+              inputMode="numeric"
+              maxLength={18}
+              value={clabe}
+              onChange={(e) => setClabe(e.target.value.replace(/\D/g, ''))}
+              placeholder="012345678901234567"
+              autoComplete="off"
+            />
+            <p className="hint">Se encripta con pgsodium antes de guardarse. Mimosa nunca la ve en texto plano.</p>
+          </div>
+        )}
+
+        {errC && <p className="err">{errC}</p>}
+        {msgC && <p className="hint hint-ok"><Icon name="check" size={13} color="var(--verde)" strokeWidth={2.5} /> {msgC}</p>}
+
+        {(!clabeGuardada || editClabe) && (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn btn-grad btn-sm" disabled={busyC} onClick={saveClabe}>
+              {busyC ? 'Guardando…' : 'Guardar CLABE'}
+            </button>
+            {editClabe && (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setEditClabe(false); setClabe(''); setErrC('') }}>
+                Cancelar
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 

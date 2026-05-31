@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import Logo from './Logo.jsx'
 import Icon from './Icon.jsx'
+import NotificationBell from './NotificationBell.jsx'
 
 export default function DashboardShell({ nav, active, onNavigate, title, subtitle, accent, children }) {
   const { user, logout } = useAuth()
@@ -41,6 +42,7 @@ export default function DashboardShell({ nav, active, onNavigate, title, subtitl
             <h1>{title}</h1>
             {subtitle && <p className="text-muted">{subtitle}</p>}
           </div>
+          <NotificationBell />
         </header>
         <div className="dash-content">{children}</div>
       </main>
