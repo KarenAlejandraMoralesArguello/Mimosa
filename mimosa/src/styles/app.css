@@ -608,6 +608,38 @@
 /* ===================== 404 ===================== */
 .notfound { min-height: 100vh; display: grid; place-items: center; background: var(--bg); padding: 24px; }
 .notfound-inner { text-align: center; max-width: 520px; }
+
+/* ===================== COOKIE BANNER ===================== */
+.cookie-banner {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 100;
+  background: rgba(255,255,255,.98);
+  border-top: 1px solid rgba(15,23,42,.08);
+  box-shadow: 0 -12px 32px rgba(15,23,42,.12);
+  padding: 18px 24px;
+}
+.cookie-content {
+  max-width: 1080px;
+  margin: 0 auto;
+  display: grid;
+  gap: 12px;
+}
+.cookie-content strong { display: block; font-size: 15px; color: var(--ink); }
+.cookie-content p { color: var(--ink-soft); line-height: 1.65; font-size: 14px; }
+.cookie-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.cookie-actions .btn { min-width: 136px; }
+.cookie-meta { color: var(--ink-soft); font-size: 13px; }
+.cookie-meta a { color: var(--violeta); text-decoration: none; }
+.cookie-meta a:hover { text-decoration: underline; }
+@media (max-width: 760px) {
+  .cookie-actions { flex-direction: column; }
+}
+
 .notfound-brand { display: inline-block; margin-bottom: 24px; }
 .notfound-brand:hover { text-decoration: none; }
 .notfound-num {

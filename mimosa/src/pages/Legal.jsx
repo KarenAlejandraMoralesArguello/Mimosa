@@ -97,7 +97,18 @@ export function Privacy() {
           </section>
 
           <section>
-            <h2>3. Uso de la información</h2>
+            <h2>3. Cookies y tecnologías similares</h2>
+            <p>Usamos cookies para registrar el consentimiento del usuario y mejorar la experiencia de navegación. Las cookies recomendadas para esta plataforma son:</p>
+            <ul>
+              <li><strong><code>mimosa_cookie_consent</code>:</strong> registra si el usuario aceptó o rechazó el uso de cookies. Categoría: esencial.</li>
+              <li><strong><code>mimosa_analytics</code>:</strong> controla si el usuario aceptó cookies analíticas de rendimiento. Categoría: estadística.</li>
+              <li><strong><code>mimosa_last_route</code>:</strong> guarda la última ruta visitada para mejorar la navegación y restaurar el estado del usuario. Categoría: funcional.</li>
+            </ul>
+            <p>Estas cookies son compatibles con el funcionamiento del frontend y no contienen información sensible. El flujo de autenticación y las sesiones seguras se manejan principalmente con Supabase y no dependen de cookies inseguras en este cliente.</p>
+          </section>
+
+          <section>
+            <h2>4. Uso de la información</h2>
             <p>Usamos tus datos exclusivamente para: operar el marketplace, procesar pagos en escrow, comunicar el estatus de tus campañas y órdenes, validar perfiles de creadoras, prevenir fraude y resolver disputas.</p>
           </section>
 

@@ -1,7 +1,10 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext.jsx'
 import WhatsAppButton from './components/WhatsAppButton.jsx'
+import CookieBanner from './components/CookieBanner.jsx'
 import Landing from './pages/Landing.jsx'
+import { setCookie } from './lib/cookies.js'
 import Login from './pages/Login.jsx'
 import StaffLogin from './pages/StaffLogin.jsx'
 import Register from './pages/Register.jsx'
@@ -82,6 +85,12 @@ spinStyle.textContent = '@keyframes spin { to { transform: rotate(360deg) } }'
 document.head.appendChild(spinStyle)
 
 export default function App() {
+  const location = useLocation()
+
+  useEffect(() => {
+    setCookie('mimosa_last_route', location.pathname, 7)
+  }, [location.pathname])
+
   return (
     <>
       <Routes>
@@ -120,6 +129,7 @@ export default function App() {
       </Routes>
 
       <WhatsAppButton />
+      <CookieBanner />
     </>
   )
 }
