@@ -73,21 +73,44 @@ function Creators() {
   const aprobar = async (creadora) => {
     await supabase
       .from('creadoras')
-      .update({ status: 'verificado', validation_feedback: null })
+      .update({ status: 'verificado' })
       .eq('perfil_id', creadora.perfil_id)
+
+    // Notificar por email (no bloquea si la Edge Function no está configurada)
+    supabase.functions.invoke('notificar-validacion', {
+      body: { email: creadora.perfiles?.email, nombre: creadora.perfiles?.nombre, tipo: 'aprobado' },
+    }).catch(() => {})
+
     setList((prev) => prev.filter((c) => c.perfil_id !== creadora.perfil_id))
   }
 
   const rechazar = async () => {
+    const { data: { user: adminUser } } = await supabase.auth.getUser()
+
+    // Vuelve a 'borrador' (no 'rechazado') para que la creadora pueda corregir
+    // su portafolio y reenviar para validación nuevamente (PRD §4).
     await supabase
       .from('creadoras')
-      .update({ status: 'rechazado', validation_feedback: feedback })
+      .update({ status: 'borrador' })
       .eq('perfil_id', reject.perfil_id)
+
+    // Guarda el feedback en la tabla dedicada
     await supabase.from('feedback_validacion').insert({
       creadora_id: reject.perfil_id,
-      admin_id:    (await supabase.auth.getUser()).data.user.id,
+      admin_id:    adminUser.id,
       mensaje:     feedback,
     })
+
+    // Notificar por email con el feedback
+    supabase.functions.invoke('notificar-validacion', {
+      body: {
+        email:    reject.perfiles?.email,
+        nombre:   reject.perfiles?.nombre,
+        tipo:     'rechazado',
+        feedback,
+      },
+    }).catch(() => {})
+
     setList((prev) => prev.filter((c) => c.perfil_id !== reject.perfil_id))
     setReject(null)
     setFeedback('')

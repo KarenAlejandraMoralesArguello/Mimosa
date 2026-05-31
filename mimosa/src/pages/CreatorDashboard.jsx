@@ -57,7 +57,7 @@ export default function CreatorDashboard() {
       subtitle={`Panel de creadora · ${user?.name || 'Creadora'}`}
     >
       {tab !== 'finance' && <UrgentBanner role="creator" onJumpToOrders={() => setTab('orders')} />}
-      {tab === 'home'    && <Home status={status} userId={user?.id} goMarket={() => setTab('market')} />}
+      {tab === 'home'    && <Home status={status} userId={user?.id} goMarket={() => setTab('market')} onStatusChange={setStatus} />}
       {tab === 'market'  && <Marketplace locked={status !== 'verificado'} />}
       {tab === 'orders'  && <Orders />}
       {tab === 'chat'    && <Chat userId={user?.id} />}
@@ -66,8 +66,11 @@ export default function CreatorDashboard() {
   )
 }
 
-function Home({ status, userId, goMarket }) {
-  const [stats, setStats] = useState(null)
+function Home({ status, userId, goMarket, onStatusChange }) {
+  const [stats, setStats]       = useState(null)
+  const [feedback, setFeedback] = useState(null)   // último feedback de admin
+  const [newPortfolio, setNewPortfolio] = useState('')
+  const [reenviarLoading, setReenviarLoading] = useState(false)
 
   useEffect(() => {
     if (status !== 'verificado' || !userId || !supabase) return
@@ -107,23 +110,82 @@ function Home({ status, userId, goMarket }) {
     })
   }, [status, userId])
 
+  // Cuando el perfil vuelve a 'borrador' por rechazo, cargamos el último feedback.
+  useEffect(() => {
+    if (status !== 'borrador' || !userId || !supabase) return
+    supabase
+      .from('feedback_validacion')
+      .select('mensaje, created_at')
+      .eq('creadora_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+      .then(({ data }) => { if (data) setFeedback(data) })
+  }, [status, userId])
+
+  const reenviar = async () => {
+    if (reenviarLoading) return
+    const url = newPortfolio.trim()
+    if (url && !/^https?:\/\/.+\..+/.test(url)) return
+    setReenviarLoading(true)
+    const update = { status: 'en_validacion' }
+    if (url) update.portafolio_url = url
+    await supabase.from('creadoras').update(update).eq('perfil_id', userId)
+    onStatusChange('en_validacion')
+    setReenviarLoading(false)
+  }
+
   if (status === 'loading') {
     return <div className="card card-pad center"><p className="text-muted">Cargando tu perfil...</p></div>
   }
 
-  if (status === 'rechazado') {
+  // 'borrador' con feedback = fue rechazada y debe corregir su portafolio
+  if (status === 'borrador' && feedback) {
+    const portValid = !newPortfolio.trim() || /^https?:\/\/.+\..+/.test(newPortfolio.trim())
     return (
       <div className="card card-pad validation-card">
-        <span className="badge badge-naranja"><span className="dot" /> Perfil rechazado</span>
-        <h2>Tu portafolio no fue aprobado</h2>
+        <span className="badge badge-naranja"><span className="dot" /> Portafolio rechazado</span>
+        <h2>Tu portafolio necesita ajustes</h2>
         <p className="text-muted">
           Revisamos tu portafolio y por el momento no cumple con los requisitos de Mimosa.
-          Revisa el feedback que te enviamos y actualiza tu portafolio desde <strong>Mi cuenta</strong>.
+          Lee el feedback, actualiza tu enlace si es necesario y reenvía para validación.
         </p>
+
+        <div className="feedback-box">
+          <strong>Feedback del equipo Mimosa:</strong>
+          <p>"{feedback.mensaje}"</p>
+          <span className="text-muted" style={{ fontSize: 12 }}>
+            {new Date(feedback.created_at).toLocaleDateString('es-MX')}
+          </span>
+        </div>
+
+        <div className="field" style={{ marginTop: 20 }}>
+          <label>Actualiza tu enlace de portafolio (opcional)</label>
+          <input
+            className="input"
+            value={newPortfolio}
+            onChange={(e) => setNewPortfolio(e.target.value)}
+            placeholder="https://behance.net/tuperfil (deja vacío para mantener el actual)"
+          />
+          {newPortfolio && !portValid && (
+            <p className="err">Ingresa un enlace válido (https://…).</p>
+          )}
+        </div>
+
+        <button
+          className="btn btn-grad"
+          style={{ marginTop: 8 }}
+          onClick={reenviar}
+          disabled={reenviarLoading || (newPortfolio && !portValid)}
+        >
+          {reenviarLoading ? 'Enviando…' : 'Reenviar para validación'}
+        </button>
       </div>
     )
   }
 
+  // 'borrador' sin feedback = perfil recién creado, no ha sido revisado aún
+  // 'en_validacion' = esperando revisión del admin
   if (status === 'en_validacion' || status === 'borrador') {
     return (
       <div className="card card-pad validation-card">
