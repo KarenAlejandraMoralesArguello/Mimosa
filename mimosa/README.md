@@ -114,12 +114,18 @@ La infraestructura de emails ya está construida y deployada:
 
 ## Variables de entorno requeridas
 
-Crea un archivo `.env.local` en la raíz de `mimosa/`:
+Copia el ejemplo y crea tu archivo local de variables de entorno:
 
-```
-VITE_SUPABASE_URL=https://osuegsalghbkotxbqwnl.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
-VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...   # se llena cuando se configure Stripe
+```bash
+cp .env.example .env.local
 ```
 
-En Netlify agregar las mismas variables en **Site settings → Environment variables**.
+Luego edita `.env.local` con tus valores reales:
+
+```env
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_publishable_key
+```
+
+En Netlify agrega las mismas variables en **Site settings → Environment variables**.
