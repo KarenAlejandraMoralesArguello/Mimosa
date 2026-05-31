@@ -1,58 +1,101 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase.js'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AuthContext — gestión de sesión JWT con Supabase Auth
+//
+// Seguridad en capas:
+//   1. Supabase emite JWTs firmados (HS256) con tiempo de expiración (1 hora).
+//   2. El cliente los renueva automáticamente mediante refresh tokens.
+//   3. onAuthStateChange captura SIGNED_OUT cuando la renovación falla
+//      (token expirado, revocado o usuario eliminado) y limpia el estado local.
+//   4. Cada solicitud a Supabase incluye el JWT en el header Authorization;
+//      RLS rechaza cualquier request con token inválido o ausente — la
+//      seguridad real vive en la base de datos, no solo en el frontend.
+//   5. El componente ProtectedRoute (App.jsx) bloquea el acceso a rutas
+//      privadas mientras el estado sea 'loading' o el usuario sea null/banned.
+// ─────────────────────────────────────────────────────────────────────────────
+
 const AuthContext = createContext(null)
 
+// Extrae y normaliza el perfil de la tabla `perfiles` para el estado local.
+async function fetchProfile(session) {
+  if (!session) return null
+
+  const { data, error } = await supabase
+    .from('perfiles')
+    .select('id, rol, nombre, email, banned, ban_reason')
+    .eq('id', session.user.id)
+    .single()
+
+  if (error || !data) return null
+
+  return {
+    id:         data.id,
+    email:      data.email,
+    role:       data.rol,       // 'brand' | 'creator' | 'admin'
+    name:       data.nombre,
+    banned:     data.banned,
+    banReason:  data.ban_reason,
+    // Metadatos del JWT — útiles para auditoría
+    jwtIssuedAt: session.user.aud,
+    sessionId:   session.access_token?.slice(-8), // últimos 8 chars para debug
+  }
+}
+
 export function AuthProvider({ children }) {
-  // `user` tiene la forma: { id, email, role, name, banned, ... }
-  // null = no autenticado, 'loading' = esperando sesión inicial de Supabase
+  // null     → no autenticado
+  // 'loading' → esperando sesión inicial (evita flash de redirect)
   const [user, setUser] = useState('loading')
 
-  // Dado un objeto Session de Supabase, carga el perfil de la tabla `perfiles`
-  // y lo fusiona con los datos de la sesión.
   const loadProfile = useCallback(async (session) => {
-    if (!session) { setUser(null); return }
-
-    const { data, error } = await supabase
-      .from('perfiles')
-      .select('id, rol, nombre, email, banned, ban_reason')
-      .eq('id', session.user.id)
-      .single()
-
-    if (error || !data) { setUser(null); return }
-
-    setUser({
-      id:        data.id,
-      email:     data.email,
-      role:      data.rol,       // 'brand' | 'creator' | 'admin'
-      name:      data.nombre,
-      banned:    data.banned,
-      banReason: data.ban_reason,
-    })
+    const profile = await fetchProfile(session)
+    setUser(profile)           // null si sesión inválida
   }, [])
 
-  // Al montar: recupera sesión activa y suscribe a cambios de auth.
   useEffect(() => {
+    if (!supabase) { setUser(null); return }
+
+    // Carga sesión existente al montar (refresca el JWT si está próximo a expirar).
     supabase.auth.getSession().then(({ data: { session } }) => {
       loadProfile(session)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      loadProfile(session)
+    // Escucha todos los eventos de autenticación de Supabase.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      switch (event) {
+        case 'INITIAL_SESSION':
+        case 'SIGNED_IN':
+        case 'USER_UPDATED':
+          loadProfile(session)
+          break
+
+        case 'TOKEN_REFRESHED':
+          // El JWT fue renovado automáticamente — no necesita recargar el perfil,
+          // solo actualiza los metadatos de sesión si los estás usando.
+          break
+
+        case 'SIGNED_OUT':
+          // Se dispara cuando: el usuario hace logout, el refresh token expiró,
+          // o la sesión fue revocada desde el dashboard de Supabase.
+          setUser(null)
+          break
+
+        default:
+          break
+      }
     })
 
     return () => subscription.unsubscribe()
   }, [loadProfile])
 
-  // login: usado después de signIn para forzar recarga del perfil.
-  // Las páginas pueden llamarlo directamente o dejar que onAuthStateChange lo haga.
   const login = useCallback(async (session) => {
     await loadProfile(session)
   }, [loadProfile])
 
   const logout = useCallback(async () => {
     await supabase.auth.signOut()
-    setUser(null)
+    // onAuthStateChange disparará SIGNED_OUT y limpiará el estado.
   }, [])
 
   // Actualiza campos locales del usuario sin recargar desde DB
@@ -70,6 +113,17 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider')
+  if (!ctx) throw new Error('useAuth debe usarse dentro de AuthProvider')
   return ctx
+}
+
+// Hook de conveniencia para rutas que solo necesitan saber si hay sesión.
+// Devuelve { user, isLoading, isAuthenticated }.
+export function useSession() {
+  const { user } = useAuth()
+  return {
+    user:            user === 'loading' ? null : user,
+    isLoading:       user === 'loading',
+    isAuthenticated: !!user && user !== 'loading' && !user.banned,
+  }
 }

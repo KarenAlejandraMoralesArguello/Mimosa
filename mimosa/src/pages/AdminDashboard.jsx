@@ -4,20 +4,32 @@ import Modal from '../components/Modal.jsx'
 import Icon from '../components/Icon.jsx'
 import { useStore } from '../context/StoreContext.jsx'
 import { supabase } from '../lib/supabase.js'
-import { PENDING_CAMPAIGNS, STATUS_MAP } from '../data/mock.js'
-
-const NAV = [
-  { id: 'creators',    label: 'Validar creadoras',      icon: 'check' },
-  { id: 'campaigns',   label: 'Pre-aprobar campanas',    icon: 'megaphone', badge: PENDING_CAMPAIGNS.length },
-  { id: 'arbitration', label: 'Arbitraje',               icon: 'scale' },
-  { id: 'accounts',    label: 'Cuentas',                 icon: 'users' },
-]
+import { STATUS_MAP } from '../data/mock.js'
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState('creators')
+  const [pendingCount, setPendingCount] = useState(0)
+
+  // Cargar conteo inicial de campanas pendientes para el badge del nav.
+  useEffect(() => {
+    if (!supabase) return
+    supabase
+      .from('campanas')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pendiente')
+      .then(({ count }) => { if (count != null) setPendingCount(count) })
+  }, [])
+
+  const nav = [
+    { id: 'creators',    label: 'Validar creadoras',    icon: 'check' },
+    { id: 'campaigns',   label: 'Pre-aprobar campanas',  icon: 'megaphone', badge: pendingCount || undefined },
+    { id: 'arbitration', label: 'Arbitraje',             icon: 'scale' },
+    { id: 'accounts',    label: 'Cuentas',               icon: 'users' },
+  ]
+
   return (
     <DashboardShell
-      nav={NAV}
+      nav={nav}
       active={tab}
       onNavigate={setTab}
       accent="var(--violeta)"
@@ -30,7 +42,7 @@ export default function AdminDashboard() {
       subtitle="Panel de administracion - Mimosa Colab Club"
     >
       {tab === 'creators'    && <Creators />}
-      {tab === 'campaigns'   && <CampaignReview />}
+      {tab === 'campaigns'   && <CampaignReview onCountChange={setPendingCount} />}
       {tab === 'arbitration' && <Arbitration />}
       {tab === 'accounts'    && <Accounts />}
     </DashboardShell>
@@ -160,11 +172,71 @@ function Creators() {
   )
 }
 
-/* ---- PRE-APROBACION DE CAMPANAS (aun mock) ---- */
+/* ---- PRE-APROBACION DE CAMPANAS ---- */
 
-function CampaignReview() {
-  const [list, setList] = useState(PENDING_CAMPAIGNS)
-  const resolve = (id) => setList(list.filter((c) => c.id !== id))
+function CampaignReview({ onCountChange }) {
+  const [list, setList]       = useState([])
+  const [loading, setLoading] = useState(true)
+  const [detail, setDetail]   = useState(null)   // campana a ver en detalle
+  const [reject, setReject]   = useState(null)   // campana a rechazar
+  const [note, setNote]       = useState('')
+  const [saving, setSaving]   = useState(false)
+
+  const fetchPending = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('campanas')
+      .select('id, titulo, brief, estilo, duracion_seg, videos, presupuesto, created_at, marcas ( nombre_comercial )')
+      .eq('status', 'pendiente')
+      .order('created_at', { ascending: true })
+    if (!error && data) {
+      setList(data)
+      onCountChange(data.length)
+    }
+    setLoading(false)
+  }, [onCountChange])
+
+  useEffect(() => { fetchPending() }, [fetchPending])
+
+  const remove = (id) => {
+    setList((prev) => {
+      const next = prev.filter((c) => c.id !== id)
+      onCountChange(next.length)
+      return next
+    })
+  }
+
+  const aprobar = async (campana) => {
+    setSaving(true)
+    const { error } = await supabase
+      .from('campanas')
+      .update({ status: 'activa' })
+      .eq('id', campana.id)
+    setSaving(false)
+    if (!error) {
+      remove(campana.id)
+      setDetail(null)
+    }
+  }
+
+  const rechazar = async () => {
+    if (!reject) return
+    setSaving(true)
+    const { error } = await supabase
+      .from('campanas')
+      .update({ status: 'rechazada', admin_note: note.trim() || null })
+      .eq('id', reject.id)
+    setSaving(false)
+    if (!error) {
+      remove(reject.id)
+      setReject(null)
+      setNote('')
+    }
+  }
+
+  if (loading) {
+    return <div className="card card-pad center"><p className="text-muted">Cargando campanas...</p></div>
+  }
 
   if (list.length === 0) {
     return (
@@ -176,25 +248,110 @@ function CampaignReview() {
   }
 
   return (
-    <div className="grid cards-grid">
-      {list.map((c) => (
-        <div key={c.id} className="card card-pad">
-          <span className="badge badge-solar"><span className="dot" /> Pendiente por aceptar</span>
-          <h3 style={{ marginTop: 12 }}>{c.title}</h3>
-          <p className="text-muted">{c.brand} · enviada {c.submitted}</p>
-          <div className="applicant-actions" style={{ marginTop: 16 }}>
-            <button className="btn btn-ghost btn-sm" onClick={() => resolve(c.id)}>Rechazar</button>
+    <>
+      <div className="grid cards-grid">
+        {list.map((c) => (
+          <div key={c.id} className="card card-pad">
+            <span className="badge badge-solar"><span className="dot" /> Pendiente por revisar</span>
+            <h3 style={{ marginTop: 12 }}>{c.titulo}</h3>
+            <p className="text-muted" style={{ fontSize: 13 }}>
+              {c.marcas?.nombre_comercial ?? 'Marca'} &middot; enviada {new Date(c.created_at).toLocaleDateString('es-MX')}
+            </p>
+            <div className="camp-meta" style={{ marginTop: 8 }}>
+              <span><Icon name="video"   size={14} /> {c.videos} videos · {c.duracion_seg}s</span>
+              <span><Icon name="palette" size={14} /> {c.estilo}</span>
+              <span><Icon name="money"   size={14} /> ${Number(c.presupuesto).toLocaleString()} MXN</span>
+            </div>
+            <div className="applicant-actions" style={{ marginTop: 16 }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setDetail(c)}>Ver brief</button>
+              <button
+                className="btn btn-ghost btn-sm btn-warn"
+                onClick={() => { setReject(c); setNote('') }}
+              >
+                Rechazar
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                style={{ background: 'var(--verde)' }}
+                onClick={() => aprobar(c)}
+                disabled={saving}
+              >
+                Publicar
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Modal: brief completo */}
+      <Modal
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        title={detail ? detail.titulo : ''}
+        footer={
+          <>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setDetail(null); setReject(detail); setNote('') }}>
+              Rechazar
+            </button>
             <button
               className="btn btn-primary btn-sm"
               style={{ background: 'var(--verde)' }}
-              onClick={() => resolve(c.id)}
+              onClick={() => aprobar(detail)}
+              disabled={saving}
             >
-              Publicar en el muro
+              {saving ? 'Publicando...' : 'Publicar en marketplace'}
             </button>
-          </div>
+          </>
+        }
+      >
+        {detail && (
+          <>
+            <div className="detail-meta">
+              <div><span>Marca</span><strong>{detail.marcas?.nombre_comercial ?? '—'}</strong></div>
+              <div><span>Videos</span><strong>{detail.videos}</strong></div>
+              <div><span>Duración</span><strong>{detail.duracion_seg}s</strong></div>
+              <div><span>Estilo</span><strong>{detail.estilo}</strong></div>
+              <div><span>Presupuesto</span><strong>${Number(detail.presupuesto).toLocaleString()} MXN</strong></div>
+              <div><span>Enviada</span><strong>{new Date(detail.created_at).toLocaleDateString('es-MX')}</strong></div>
+            </div>
+            <h4 className="detail-section">Briefing</h4>
+            <p className="text-muted">{detail.brief || 'Sin briefing especificado.'}</p>
+          </>
+        )}
+      </Modal>
+
+      {/* Modal: rechazar con nota */}
+      <Modal
+        open={!!reject}
+        onClose={() => setReject(null)}
+        title={reject ? ('Rechazar campana — ' + reject.titulo) : ''}
+        footer={
+          <>
+            <button className="btn btn-ghost btn-sm" onClick={() => setReject(null)}>Cancelar</button>
+            <button
+              className="btn btn-grad btn-warn btn-sm"
+              onClick={rechazar}
+              disabled={saving}
+            >
+              {saving ? 'Rechazando...' : 'Confirmar rechazo'}
+            </button>
+          </>
+        }
+      >
+        <div className="info-banner">
+          La campana pasara a estado <strong>Rechazada</strong>. La marca podra editarla y reenviarla.
         </div>
-      ))}
-    </div>
+        <div className="field">
+          <label>Nota para la marca (opcional)</label>
+          <textarea
+            className="textarea"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Ej. El brief no especifica el producto con suficiente detalle..."
+          />
+        </div>
+      </Modal>
+    </>
   )
 }
 

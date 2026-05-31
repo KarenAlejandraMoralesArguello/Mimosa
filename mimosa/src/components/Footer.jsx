@@ -24,7 +24,7 @@ export default function Footer() {
           </div>
           <div>
             <h4>Soporte</h4>
-            <a href="https://wa.me/520000000000" target="_blank" rel="noreferrer">WhatsApp corporativo</a>
+            <a href="https://wa.me/528125706387" target="_blank" rel="noreferrer">WhatsApp corporativo</a>
             <a href="#">Centro de ayuda</a>
           </div>
         </div>

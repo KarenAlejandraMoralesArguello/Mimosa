@@ -57,7 +57,7 @@ export default function CreatorDashboard() {
       subtitle={`Panel de creadora · ${user?.name || 'Creadora'}`}
     >
       {tab !== 'finance' && <UrgentBanner role="creator" onJumpToOrders={() => setTab('orders')} />}
-      {tab === 'home'    && <Home status={status} goMarket={() => setTab('market')} />}
+      {tab === 'home'    && <Home status={status} userId={user?.id} goMarket={() => setTab('market')} />}
       {tab === 'market'  && <Marketplace locked={status !== 'verificado'} />}
       {tab === 'orders'  && <Orders />}
       {tab === 'chat'    && <Chat userId={user?.id} />}
@@ -66,7 +66,47 @@ export default function CreatorDashboard() {
   )
 }
 
-function Home({ status, goMarket }) {
+function Home({ status, userId, goMarket }) {
+  const [stats, setStats] = useState(null)
+
+  useEffect(() => {
+    if (status !== 'verificado' || !userId || !supabase) return
+
+    const inicioMes = new Date()
+    inicioMes.setDate(1)
+    inicioMes.setHours(0, 0, 0, 0)
+
+    Promise.all([
+      // Órdenes activas (en_curso)
+      supabase
+        .from('ordenes')
+        .select('id', { count: 'exact', head: true })
+        .eq('creadora_id', userId)
+        .eq('status', 'en_curso'),
+      // Ingresos del mes (completadas este mes)
+      supabase
+        .from('ordenes')
+        .select('creator_gets')
+        .eq('creadora_id', userId)
+        .eq('status', 'completado')
+        .gte('created_at', inicioMes.toISOString()),
+      // Total de postulaciones enviadas
+      supabase
+        .from('postulaciones')
+        .select('id', { count: 'exact', head: true })
+        .eq('creadora_id', userId),
+    ]).then(([activas, ingresos, posts]) => {
+      const totalIngresos = (ingresos.data ?? []).reduce(
+        (sum, o) => sum + Number(o.creator_gets), 0
+      )
+      setStats({
+        activas:      activas.count  ?? 0,
+        ingresos:     totalIngresos,
+        postulaciones: posts.count   ?? 0,
+      })
+    })
+  }, [status, userId])
+
   if (status === 'loading') {
     return <div className="card card-pad center"><p className="text-muted">Cargando tu perfil...</p></div>
   }
@@ -114,9 +154,21 @@ function Home({ status, goMarket }) {
         <button className="btn btn-light" onClick={goMarket}>Ver campañas →</button>
       </div>
       <div className="grid stats-grid">
-        <Stat label="Órdenes activas" value="1" grad="var(--grad-rosa-violeta)" />
-        <Stat label="Ingresos del mes" value="$1,710" grad="var(--grad-verde-azul)" />
-        <Stat label="Postulaciones" value="3" grad="var(--grad-solar-rosa)" />
+        <Stat
+          label="Órdenes activas"
+          value={stats ? String(stats.activas) : '…'}
+          grad="var(--grad-rosa-violeta)"
+        />
+        <Stat
+          label="Ingresos del mes"
+          value={stats ? ('$' + stats.ingresos.toLocaleString('es-MX', { maximumFractionDigits: 0 })) : '…'}
+          grad="var(--grad-verde-azul)"
+        />
+        <Stat
+          label="Postulaciones"
+          value={stats ? String(stats.postulaciones) : '…'}
+          grad="var(--grad-solar-rosa)"
+        />
         <Stat label="Calificación" value="4.9" grad="var(--grad-violeta-azul)" />
       </div>
     </>

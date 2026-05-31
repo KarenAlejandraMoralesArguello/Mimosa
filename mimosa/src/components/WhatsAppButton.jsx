@@ -5,7 +5,7 @@ export default function WhatsAppButton() {
   return (
     <a
       className="wa-fab"
-      href="https://wa.me/520000000000?text=Hola%20Mimosa%2C%20necesito%20ayuda"
+      href="https://wa.me/528125706387?text=Hola%20Mimosa%2C%20necesito%20ayuda"
       target="_blank"
       rel="noreferrer"
       aria-label="Soporte por WhatsApp"
