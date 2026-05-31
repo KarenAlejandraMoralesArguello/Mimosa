@@ -377,36 +377,237 @@ function CampaignReview({ onCountChange }) {
 /* ---- ARBITRAJE ---- */
 
 function Arbitration() {
-  const { orders } = useStore()
+  const { orders, approveOrder, failOrder, refetch } = useStore()
+  const [resolveTarget, setResolveTarget] = useState(null)
+  const [chatTarget, setChatTarget] = useState(null)
+  const [chatMessages, setChatMessages] = useState([])
+  const [loadingChat, setLoadingChat] = useState(false)
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Cargar historial de chat
+  const handleOpenChat = async (order) => {
+    setChatTarget(order)
+    setLoadingChat(true)
+    setChatMessages([])
+
+    try {
+      // 1. Buscar el chat por campana_id y creadora_id
+      const { data: chatData, error: chatErr } = await supabase
+        .from('chats')
+        .select('id')
+        .eq('campana_id', order.campana_id)
+        .eq('creadora_id', order.creadora_id)
+        .single()
+
+      if (chatErr || !chatData) {
+        console.warn('Chat no encontrado en la base de datos:', chatErr)
+        setLoadingChat(false)
+        return
+      }
+
+      // 2. Cargar los mensajes de ese chat
+      const { data: messagesData, error: msgErr } = await supabase
+        .from('mensajes')
+        .select(`
+          id,
+          chat_id,
+          from_perfil_id,
+          texto,
+          archivo_url,
+          created_at,
+          perfiles:from_perfil_id (
+            nombre,
+            rol
+          )
+        `)
+        .eq('chat_id', chatData.id)
+        .order('created_at', { ascending: true })
+
+      if (!msgErr && messagesData) {
+        setChatMessages(messagesData)
+      } else {
+        console.error('Error al cargar mensajes:', msgErr)
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoadingChat(false)
+    }
+  }
+
+  // Resolver disputa
+  const handleResolve = async (action) => {
+    if (!resolveTarget) return
+    setSaving(true)
+    try {
+      if (action === 'approve') {
+        await approveOrder(resolveTarget.id)
+      } else if (action === 'fail') {
+        await failOrder(resolveTarget.id, reason.trim() || 'Resolución de disputa por el Administrador')
+      }
+      setResolveTarget(null)
+      setReason('')
+      if (refetch) await refetch()
+    } catch (e) {
+      console.error('Error al resolver disputa:', e)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
-    <div className="grid orders-grid">
-      {orders.map((o) => {
-        const st = STATUS_MAP[o.status]
-        return (
-          <div key={o.id} className="card card-pad order-card">
-            <span className={'badge ' + st.badge}><span className="dot" /> {st.label}</span>
-            <h3 style={{ marginTop: 12 }}>{o.campaign}</h3>
-            <div className="order-meta">
-              <span><Icon name="building" size={14} /> {o.brand}</span>
-              <span><Icon name="user"     size={14} /> {o.creator}</span>
-              <span><Icon name="money"    size={14} /> ${o.base.toLocaleString()}</span>
-            </div>
-            {o.deliveryUrl
-              ? (
-                <a className="link-azul" href={o.deliveryUrl} target="_blank" rel="noreferrer">
+    <>
+      <div className="grid orders-grid">
+        {orders.map((o) => {
+          const st = STATUS_MAP[o.status]
+          return (
+            <div key={o.id} className="card card-pad order-card">
+              <div className="order-head">
+                <span className={'badge ' + st.badge}><span className="dot" /> {st.label}</span>
+                {o.corrections > 0 && o.status !== 'cancelado' && (
+                  <span className="badge badge-solar"><span className="dot" /> Ronda {o.corrections}/2</span>
+                )}
+              </div>
+              <h3 style={{ marginTop: 12 }}>{o.campaign}</h3>
+              <div className="order-meta">
+                <span><Icon name="building" size={14} /> {o.brand}</span>
+                <span><Icon name="user"     size={14} /> {o.creator}</span>
+                <span><Icon name="money"    size={14} /> ${o.base.toLocaleString()}</span>
+              </div>
+              
+              {o.deliveryUrl ? (
+                <a className="link-azul" href={o.deliveryUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
                   <Icon name="external" size={14} /> Inspeccionar entrega
                 </a>
-              )
-              : <p className="hint">Sin entrega registrada aun.</p>
-            }
-            <div className="applicant-actions" style={{ marginTop: 14 }}>
-              <button className="btn btn-ghost btn-sm">Ver historial de chat</button>
-              <button className="btn btn-primary btn-sm">Resolver disputa</button>
+              ) : (
+                <p className="hint">Sin entrega registrada aún.</p>
+              )}
+
+              {o.status === 'cancelado' && o.correctionNote && (
+                <p className="hint" style={{ color: 'var(--naranja)', marginTop: 8 }}>
+                  <strong>Motivo cancelación:</strong> {o.correctionNote}
+                </p>
+              )}
+
+              <div className="applicant-actions" style={{ marginTop: 14 }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => handleOpenChat(o)}>
+                  Ver historial de chat
+                </button>
+                {(o.status === 'en_curso' || o.status === 'entregado') && (
+                  <button className="btn btn-primary btn-sm" onClick={() => { setResolveTarget(o); setReason('') }}>
+                    Resolver disputa
+                  </button>
+                )}
+              </div>
             </div>
+          )
+        })}
+      </div>
+
+      {/* Modal: Historial de chat */}
+      <Modal
+        open={!!chatTarget}
+        onClose={() => setChatTarget(null)}
+        title={chatTarget ? `Historial de chat - ${chatTarget.campaign}` : ''}
+        footer={
+          <button className="btn btn-ghost btn-sm" onClick={() => setChatTarget(null)}>
+            Cerrar
+          </button>
+        }
+      >
+        {loadingChat ? (
+          <div className="center" style={{ padding: 24 }}><p className="text-muted">Cargando conversación...</p></div>
+        ) : chatMessages.length === 0 ? (
+          <div className="center" style={{ padding: 24 }}>
+            <p className="text-muted">No se registran mensajes en esta colaboración aún.</p>
           </div>
-        )
-      })}
-    </div>
+        ) : (
+          <div className="chat-body-admin" style={{ maxHeight: '400px', overflowY: 'auto', padding: '8px' }}>
+            {chatMessages.map((m) => {
+              const autor = m.perfiles?.nombre ?? 'Usuario'
+              const rol = m.perfiles?.rol === 'brand' ? 'Marca' : 'Creadora'
+              return (
+                <div key={m.id} className="message-admin-row" style={{ marginBottom: '12px', borderBottom: '1px solid #f0f0f0', paddingBottom: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-muted)' }}>
+                    <strong>{autor} ({rol})</strong>
+                    <span>{new Date(m.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  {m.texto && <p style={{ margin: '4px 0', fontSize: '14px' }}>{m.texto}</p>}
+                  {m.archivo_url && (
+                    <a href={m.archivo_url} target="_blank" rel="noreferrer" className="link-azul" style={{ fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Icon name="paperclip" size={12} /> Descargar archivo adjunto
+                    </a>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal: Resolver Disputa / Escrow */}
+      <Modal
+        open={!!resolveTarget}
+        onClose={() => setResolveTarget(null)}
+        title={resolveTarget ? `Resolver Disputa - ${resolveTarget.campaign}` : ''}
+        footer={
+          <>
+            <button className="btn btn-ghost btn-sm" onClick={() => setResolveTarget(null)}>
+              Cancelar
+            </button>
+            <button
+              className="btn btn-grad btn-warn btn-sm"
+              disabled={saving || !reason.trim()}
+              onClick={() => handleResolve('fail')}
+            >
+              {saving ? 'Procesando...' : 'Reembolsar a Marca'}
+            </button>
+            <button
+              className="btn btn-primary btn-sm"
+              style={{ background: 'var(--verde)' }}
+              disabled={saving}
+              onClick={() => handleResolve('approve')}
+            >
+              {saving ? 'Procesando...' : 'Liberar a Creadora'}
+            </button>
+          </>
+        }
+      >
+        {resolveTarget && (
+          <>
+            <div className="info-banner" style={{ marginBottom: '16px' }}>
+              <strong>Acción del Administrador:</strong> Esta herramienta te permite forzar el flujo de escrow para desbloquear una orden en disputa o estancada.
+            </div>
+            <div className="detail-meta" style={{ marginBottom: '16px' }}>
+              <div><span>Marca</span><strong>{resolveTarget.brand}</strong></div>
+              <div><span>Creadora</span><strong>{resolveTarget.creator}</strong></div>
+              <div><span>Monto base</span><strong>${resolveTarget.base.toLocaleString()} MXN</strong></div>
+              <div><span>Total Escrow</span><strong>${(resolveTarget.brandPays || resolveTarget.base * 1.15).toLocaleString()} MXN</strong></div>
+            </div>
+            
+            {resolveTarget.deliveryUrl && (
+              <div style={{ marginBottom: '16px' }}>
+                <strong>Entrega de la creadora:</strong><br />
+                <a className="link-azul" href={resolveTarget.deliveryUrl} target="_blank" rel="noreferrer">
+                  <Icon name="external" size={14} /> Inspeccionar material entregado
+                </a>
+              </div>
+            )}
+
+            <div className="field">
+              <label>Justificación / Nota de Arbitraje (Obligatorio para reembolsar)</label>
+              <textarea
+                className="textarea"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Escribe el motivo del reembolso a la marca, ej. El video entregado no cumple con el brief tras varias solicitudes, o La creadora abandonó el proyecto."
+              />
+            </div>
+          </>
+        )}
+      </Modal>
+    </>
   )
 }
 

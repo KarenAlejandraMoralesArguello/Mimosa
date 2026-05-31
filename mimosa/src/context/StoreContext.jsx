@@ -21,6 +21,7 @@ function mapOrden(row, perfiles = {}) {
   return {
     id:             row.id,
     campaign:       row.campanas?.titulo   ?? row.campana_id,
+    campana_id:     row.campana_id,
     brand:          perfiles[row.marca_id]    ?? row.marca_id,
     creator:        perfiles[row.creadora_id] ?? row.creadora_id,
     marca_id:       row.marca_id,
