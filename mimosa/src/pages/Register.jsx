@@ -122,10 +122,10 @@ function BrandForm({ onSwitch }) {
 
     const userId = data.user?.id
     if (userId) {
-      await supabase.from('marcas').insert({
-        perfil_id:        userId,
-        nombre_comercial: form.company,
-        plan,
+      await supabase.rpc('registrar_marca', {
+        p_perfil_id:        userId,
+        p_nombre_comercial: form.company,
+        p_plan:             plan,
       })
     }
 
@@ -269,10 +269,9 @@ function CreatorForm({ onSwitch }) {
 
     const userId = data.user?.id
     if (userId) {
-      await supabase.from('creadoras').insert({
-        perfil_id:      userId,
-        portafolio_url: form.portfolio.trim(),
-        status:         'en_validacion',
+      await supabase.rpc('registrar_creadora', {
+        p_perfil_id:      userId,
+        p_portafolio_url: form.portfolio.trim(),
       })
     }
 
