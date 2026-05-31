@@ -3,22 +3,38 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import Logo from '../components/Logo.jsx'
+import PasswordInput from '../components/PasswordInput.jsx'
 
 const HOME = { brand: '/marca', creator: '/creadora', admin: '/admin' }
+
+// Regex de email: sin espacios, exactamente un @, dominio con al menos 2 chars.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
 export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const needsConfirm = searchParams.get('confirmar') === '1'
-  const [email, setEmail] = useState('')
+
+  const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
-  const [err, setErr] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [emailErr, setEmailErr] = useState('')
+  const [err, setErr]           = useState('')
+  const [loading, setLoading]   = useState(false)
+
+  const validateEmail = (val) => {
+    if (!val) { setEmailErr('El correo es obligatorio.'); return false }
+    if (!EMAIL_RE.test(val)) { setEmailErr('Ingresa un correo válido (ej. nombre@dominio.com).'); return false }
+    setEmailErr('')
+    return true
+  }
 
   const submit = async (e) => {
     e.preventDefault()
     setErr('')
+    if (!validateEmail(email)) return
+    if (!password) { setErr('Ingresa tu contraseña.'); return }
+
     setLoading(true)
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
@@ -29,7 +45,6 @@ export default function Login() {
       return
     }
 
-    // Carga el perfil para obtener rol y estado de baneo.
     const { data: perfil, error: perfilErr } = await supabase
       .from('perfiles')
       .select('rol, banned')
@@ -43,7 +58,6 @@ export default function Login() {
       return
     }
 
-    // El portal público NO autentica admins (PRD §8).
     if (perfil.rol === 'admin') {
       setErr('No encontramos una cuenta con esos datos.')
       await supabase.auth.signOut()
@@ -72,7 +86,7 @@ export default function Login() {
       </div>
 
       <div className="auth-form-wrap">
-        <form className="auth-form" onSubmit={submit}>
+        <form className="auth-form" onSubmit={submit} noValidate>
           <h1>Iniciar sesión</h1>
           {needsConfirm && (
             <div className="info-banner" style={{ marginBottom: 14 }}>
@@ -83,18 +97,31 @@ export default function Login() {
 
           <div className="field">
             <label htmlFor="email">Correo electrónico</label>
-            <input id="email" className="input" type="email" autoComplete="email"
-              placeholder="tucorreo@empresa.com" value={email}
-              onChange={(e) => setEmail(e.target.value)} />
+            <input
+              id="email"
+              className={'input' + (emailErr ? ' input-error' : '')}
+              type="email"
+              autoComplete="email"
+              placeholder="tucorreo@empresa.com"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); if (emailErr) validateEmail(e.target.value) }}
+              onBlur={(e) => validateEmail(e.target.value)}
+            />
+            {emailErr && <p className="err">{emailErr}</p>}
           </div>
+
           <div className="field">
             <div className="field-row">
               <label htmlFor="password">Contraseña</label>
               <Link to="/recuperar" className="forgot-link">¿Olvidaste tu contraseña?</Link>
             </div>
-            <input id="password" className="input" type="password" autoComplete="current-password"
-              placeholder="••••••••" value={password}
-              onChange={(e) => setPassword(e.target.value)} />
+            <PasswordInput
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+            />
           </div>
 
           {err && <p className="err" style={{ marginBottom: 14 }}>{err}</p>}

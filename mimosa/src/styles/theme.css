@@ -152,7 +152,28 @@ a:hover { text-decoration: underline; }
   border-color: var(--violeta);
   box-shadow: 0 0 0 4px rgba(124, 58, 255, .12);
 }
+.input-error { border-color: var(--rosa) !important; }
+.input-error:focus { box-shadow: 0 0 0 4px rgba(255, 45, 120, .12) !important; }
+.req { color: var(--rosa); font-weight: 700; margin-left: 2px; }
 .textarea { resize: vertical; min-height: 96px; }
+
+/* PasswordInput — contenedor con botón ojito */
+.pw-wrap { position: relative; }
+.pw-wrap .input { padding-right: 46px; }
+.pw-eye {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer; padding: 4px; line-height: 0;
+  color: var(--muted); border-radius: 6px; transition: color .12s;
+}
+.pw-eye:hover { color: var(--violeta); }
+
+/* Input con icono de estado (email válido/inválido) */
+.input-wrap { position: relative; }
+.input-wrap .input { padding-right: 38px; }
+.input-status {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  font-size: 15px; pointer-events: none;
+}
 
 .section { padding: 80px 0; }
 .eyebrow {

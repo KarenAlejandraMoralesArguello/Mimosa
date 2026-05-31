@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import Logo from '../components/Logo.jsx'
 import Icon from '../components/Icon.jsx'
+import PasswordInput from '../components/PasswordInput.jsx'
 
 // Supabase redirige aquí con un token en el hash de la URL (#access_token=...).
 // onAuthStateChange detecta el evento PASSWORD_RECOVERY y establece la sesión
@@ -91,13 +92,23 @@ export default function ResetPassword() {
 
           <div className="field" style={{ marginTop: 14 }}>
             <label htmlFor="np">Nueva contraseña</label>
-            <input id="np" className="input" type="password" autoComplete="new-password"
-              value={pwd} onChange={(e) => setPwd(e.target.value)} placeholder="Mínimo 8 caracteres con letras y números" />
+            <PasswordInput
+              id="np"
+              value={pwd}
+              onChange={(e) => setPwd(e.target.value)}
+              placeholder="Mínimo 8 caracteres con letras y números"
+              autoComplete="new-password"
+            />
           </div>
           <div className="field">
             <label htmlFor="np2">Confirmar contraseña</label>
-            <input id="np2" className="input" type="password" autoComplete="new-password"
-              value={pwd2} onChange={(e) => setPwd2(e.target.value)} placeholder="Repite la contraseña" />
+            <PasswordInput
+              id="np2"
+              value={pwd2}
+              onChange={(e) => setPwd2(e.target.value)}
+              placeholder="Repite la contraseña"
+              autoComplete="new-password"
+            />
           </div>
 
           {err && <p className="err" style={{ marginBottom: 14 }}>{err}</p>}
