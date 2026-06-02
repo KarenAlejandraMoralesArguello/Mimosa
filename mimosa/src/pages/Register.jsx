@@ -126,14 +126,27 @@ function BrandForm({ onSwitch }) {
       await supabase.rpc('registrar_marca', {
         p_perfil_id:        userId,
         p_nombre_comercial: form.company,
-        p_plan:             plan,
+        p_plan:             'foru',
       })
     }
 
     if (!data.session) { navigate('/login?confirmar=1'); return }
     await login(data.session)
     sendEmail('bienvenida_marca', form.email, { nombre: form.company })
-    navigate('/marca')
+
+    // Redirigir a Stripe Checkout
+    const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke(
+      'crear-checkout-session',
+      { body: { plan, userId: data.user.id, email: form.email, nombre: form.company } },
+    )
+
+    if (checkoutError || !checkoutData?.url) {
+      // Si falla Stripe, igual entra al dashboard (podrá pagar desde perfil)
+      navigate('/marca')
+      return
+    }
+
+    window.location.href = checkoutData.url
   }
 
   return (
