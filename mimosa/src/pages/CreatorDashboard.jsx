@@ -684,12 +684,27 @@ function ChatList({ userId, onSelect }) {
 }
 
 function ChatConversation({ userId, ctx, onBack }) {
-  const [messages, setMessages] = useState([])
-  const [text, setText]         = useState('')
-  const [sending, setSending]   = useState(false)
+  const { user }                  = useAuth()
+  const [messages, setMessages]   = useState([])
+  const [text, setText]           = useState('')
+  const [sending, setSending]     = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [recipient, setRecipient] = useState(null)
   const endRef  = useRef(null)
   const fileRef = useRef(null)
+
+  // Precargar email de la marca para notificaciones
+  useEffect(() => {
+    if (!ctx?.chatId || !supabase) return
+    supabase.from('chats').select('marca_id, creadora_id').eq('id', ctx.chatId).single()
+      .then(async ({ data: chat }) => {
+        if (!chat) return
+        const otherId = userId === chat.creadora_id ? chat.marca_id : chat.creadora_id
+        if (!otherId) return
+        const { data: p } = await supabase.from('perfiles').select('email, nombre').eq('id', otherId).single()
+        if (p) setRecipient({ email: p.email, nombre: p.nombre, rol: userId === chat.creadora_id ? 'brand' : 'creadora' })
+      })
+  }, [ctx?.chatId, userId])
 
   useEffect(() => {
     if (!ctx?.chatId || !supabase) return
@@ -740,6 +755,14 @@ function ChatConversation({ userId, ctx, onBack }) {
       from_perfil_id: userId,
       texto:          optimistic.texto,
     })
+    if (recipient?.email) {
+      sendEmail('nuevo_mensaje', recipient.email, {
+        nombre:    recipient.nombre ?? '',
+        remitente: user?.name ?? 'Mimosa',
+        campana:   ctx.campTitle ?? 'tu colaboración',
+        rol:       recipient.rol,
+      })
+    }
     setSending(false)
   }
 

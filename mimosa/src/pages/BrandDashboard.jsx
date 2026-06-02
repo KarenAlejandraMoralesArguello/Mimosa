@@ -7,6 +7,7 @@ import { useStore } from '../context/StoreContext.jsx'
 import { supabase } from '../lib/supabase.js'
 import UrgentBanner from '../components/UrgentBanner.jsx'
 import { STATUS_MAP, quote, MIN_VIDEO_PRICE } from '../data/mock.js'
+import { sendEmail } from '../lib/email.js'
 
 const PLAN_LIMITS = { foru: 3, starter: 6, pro: 12 }
 
@@ -618,13 +619,28 @@ function ChatList({ userId, onSelect }) {
 }
 
 function ChatConversation({ userId, ctx, onBack, onCreated, isBrand }) {
-  const [messages, setMessages] = useState([])
-  const [text, setText]         = useState('')
-  const [sending, setSending]   = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [orderOpen, setOrderOpen] = useState(false)
+  const { user }                    = useAuth()
+  const [messages, setMessages]     = useState([])
+  const [text, setText]             = useState('')
+  const [sending, setSending]       = useState(false)
+  const [uploading, setUploading]   = useState(false)
+  const [orderOpen, setOrderOpen]   = useState(false)
+  const [recipient, setRecipient]   = useState(null)
   const endRef  = useRef(null)
   const fileRef = useRef(null)
+
+  // Precargar email del destinatario para notificaciones
+  useEffect(() => {
+    if (!ctx?.chatId || !supabase) return
+    supabase.from('chats').select('marca_id, creadora_id').eq('id', ctx.chatId).single()
+      .then(async ({ data: chat }) => {
+        if (!chat) return
+        const otherId = userId === chat.marca_id ? chat.creadora_id : chat.marca_id
+        if (!otherId) return
+        const { data: p } = await supabase.from('perfiles').select('email, nombre').eq('id', otherId).single()
+        if (p) setRecipient({ email: p.email, nombre: p.nombre, rol: userId === chat.marca_id ? 'creadora' : 'brand' })
+      })
+  }, [ctx?.chatId, userId])
 
   // Cargar mensajes e iniciar suscripcion Realtime
   useEffect(() => {
@@ -677,6 +693,14 @@ function ChatConversation({ userId, ctx, onBack, onCreated, isBrand }) {
       from_perfil_id: userId,
       texto:          optimistic.texto,
     })
+    if (recipient?.email) {
+      sendEmail('nuevo_mensaje', recipient.email, {
+        nombre:    recipient.nombre ?? '',
+        remitente: user?.name ?? 'Mimosa',
+        campana:   ctx.campTitle ?? 'tu colaboración',
+        rol:       recipient.rol,
+      })
+    }
     setSending(false)
   }
 
