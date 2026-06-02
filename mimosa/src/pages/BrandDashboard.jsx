@@ -6,16 +6,9 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { useStore } from '../context/StoreContext.jsx'
 import { supabase } from '../lib/supabase.js'
 import UrgentBanner from '../components/UrgentBanner.jsx'
-import { APPLICANTS, STATUS_MAP, quote, MIN_VIDEO_PRICE } from '../data/mock.js'
+import { STATUS_MAP, quote, MIN_VIDEO_PRICE } from '../data/mock.js'
 
 const PLAN_LIMITS = { foru: 3, starter: 6, pro: 12 }
-
-const NAV = [
-  { id: 'campaigns',  label: 'Campanas',        icon: 'megaphone' },
-  { id: 'applicants', label: 'Postulantes',      icon: 'users', badge: APPLICANTS.length },
-  { id: 'chat',       label: 'Chat',             icon: 'chat' },
-  { id: 'orders',     label: 'Ordenes Escrow',   icon: 'shield' },
-]
 
 export default function BrandDashboard() {
   const { user } = useAuth()
@@ -23,6 +16,7 @@ export default function BrandDashboard() {
   const [brandName, setBrandName] = useState('')
   const [plan, setPlan] = useState('starter')
   const [initialChatCtx, setInitialChatCtx] = useState(null)
+  const [applicantsCount, setApplicantsCount] = useState(0)
 
   useEffect(() => {
     if (!user || !supabase) return
@@ -39,9 +33,35 @@ export default function BrandDashboard() {
       })
   }, [user])
 
+  // Conteo real de postulaciones para badge del nav
+  // postulaciones no tiene marca_id directo → join por campanas
+  useEffect(() => {
+    if (!user || !supabase) return
+    supabase
+      .from('campanas')
+      .select('id')
+      .eq('marca_id', user.id)
+      .then(async ({ data: camps }) => {
+        const ids = (camps ?? []).map((c) => c.id)
+        if (ids.length === 0) { setApplicantsCount(0); return }
+        const { count } = await supabase
+          .from('postulaciones')
+          .select('id', { count: 'exact', head: true })
+          .in('campana_id', ids)
+        if (count != null) setApplicantsCount(count)
+      })
+  }, [user])
+
+  const nav = [
+    { id: 'campaigns',  label: 'Campanas',      icon: 'megaphone' },
+    { id: 'applicants', label: 'Postulantes',    icon: 'users', badge: applicantsCount || undefined },
+    { id: 'chat',       label: 'Chat',           icon: 'chat' },
+    { id: 'orders',     label: 'Ordenes Escrow', icon: 'shield' },
+  ]
+
   return (
     <DashboardShell
-      nav={NAV}
+      nav={nav}
       active={tab}
       onNavigate={setTab}
       accent="var(--rosa)"

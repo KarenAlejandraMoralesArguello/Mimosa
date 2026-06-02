@@ -550,7 +550,7 @@ function Arbitration() {
       <Modal
         open={!!resolveTarget}
         onClose={() => setResolveTarget(null)}
-        title={resolveTarget ? `Resolver Disputa - ${resolveTarget.campaign}` : ''}
+        title={resolveTarget ? `Resolver Disputa${resolveTarget.campaign ? ' — ' + resolveTarget.campaign : ''}` : ''}
         footer={
           <>
             <button className="btn btn-ghost btn-sm" onClick={() => setResolveTarget(null)}>
