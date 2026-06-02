@@ -28,28 +28,35 @@ Deno.serve(async (req) => {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session
-    const { plan, supabase_user_id } = session.metadata ?? {}
-    const subscriptionId = session.subscription as string
+    const meta = session.metadata ?? {}
 
-    if (!plan || !supabase_user_id) {
-      return new Response('Missing metadata', { status: 400 })
+    if (meta.type === 'orden' && meta.orden_id) {
+      // Pago de orden — activar escrow
+      const paymentIntentId = session.payment_intent as string
+      await supabase
+        .from('ordenes')
+        .update({ status: 'en_curso', stripe_payment_intent: paymentIntentId })
+        .eq('id', meta.orden_id)
+
+    } else if (meta.plan && meta.supabase_user_id) {
+      // Suscripción de marca
+      const subscriptionId = session.subscription as string
+      await supabase
+        .from('marcas')
+        .update({ plan: meta.plan })
+        .eq('perfil_id', meta.supabase_user_id)
+
+      await supabase.from('suscripciones').upsert(
+        {
+          marca_id:               meta.supabase_user_id,
+          plan:                   meta.plan,
+          status:                 'active',
+          stripe_subscription_id: subscriptionId,
+          period_start:           new Date().toISOString(),
+        },
+        { onConflict: 'stripe_subscription_id' },
+      )
     }
-
-    await supabase
-      .from('marcas')
-      .update({ plan })
-      .eq('perfil_id', supabase_user_id)
-
-    await supabase.from('suscripciones').upsert(
-      {
-        marca_id:               supabase_user_id,
-        plan,
-        status:                 'active',
-        stripe_subscription_id: subscriptionId,
-        period_start:           new Date().toISOString(),
-      },
-      { onConflict: 'stripe_subscription_id' },
-    )
   }
 
   if (event.type === 'customer.subscription.deleted') {

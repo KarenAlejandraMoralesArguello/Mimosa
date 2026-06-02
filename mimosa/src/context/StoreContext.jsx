@@ -129,13 +129,18 @@ export function StoreProvider({ children }) {
     const { error } = await supabase
       .from('ordenes')
       .update({
-        status:          newStatus,
+        status:           willFail ? 'cancelado' : newStatus,
         corrections_used: willFail ? order.corrections : newCorrections,
-        correction_note: note,
+        correction_note:  note,
       })
       .eq('id', id)
 
     if (error) { console.error('requestCorrection:', error); return }
+
+    // Si se excedieron las correcciones, reembolsar vía Stripe
+    if (willFail) {
+      await supabase.functions.invoke('cancelar-orden', { body: { orden_id: id } })
+    }
 
     // Registrar fila en `correcciones` si no se cancela.
     if (!willFail) {
@@ -196,14 +201,18 @@ export function StoreProvider({ children }) {
     setOrders((prev) => prev.map((o) => o.id === id ? { ...o, status: 'entregado', deliveryUrl: url } : o))
   }, [])
 
-  // Marcar como fallida / cancelada.
+  // Marcar como fallida / cancelada — reembolsa via Stripe si había pago.
   const failOrder = useCallback(async (id, reason) => {
     const { error } = await supabase
       .from('ordenes')
-      .update({ status: 'cancelado', correction_note: reason })
+      .update({ correction_note: reason })
       .eq('id', id)
 
-    if (error) { console.error('failOrder:', error); return }
+    if (error) { console.error('failOrder patch:', error) }
+
+    // Reembolso + status vía edge function (usa service role)
+    await supabase.functions.invoke('cancelar-orden', { body: { orden_id: id } })
+
     setOrders((prev) => prev.map((o) => o.id === id ? { ...o, status: 'cancelado', correctionNote: reason } : o))
   }, [])
 

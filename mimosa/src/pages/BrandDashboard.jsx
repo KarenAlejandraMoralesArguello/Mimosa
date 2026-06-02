@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import DashboardShell from '../components/DashboardShell.jsx'
 import Modal from '../components/Modal.jsx'
 import Icon from '../components/Icon.jsx'
@@ -12,11 +12,21 @@ const PLAN_LIMITS = { foru: 3, starter: 6, pro: 12 }
 
 export default function BrandDashboard() {
   const { user } = useAuth()
-  const [tab, setTab] = useState('campaigns')
-  const [brandName, setBrandName] = useState('')
-  const [plan, setPlan] = useState('starter')
+  const params   = useMemo(() => new URLSearchParams(window.location.search), [])
+  const [tab, setTab]               = useState(() => params.get('orden') === 'pagada' ? 'orders' : 'campaigns')
+  const [ordenBanner, setOrdenBanner] = useState(params.get('orden') === 'pagada')
+  const [brandName, setBrandName]   = useState('')
+  const [plan, setPlan]             = useState('starter')
   const [initialChatCtx, setInitialChatCtx] = useState(null)
   const [applicantsCount, setApplicantsCount] = useState(0)
+
+  // Limpiar el query param sin recargar la página
+  useEffect(() => {
+    if (params.get('orden') === 'pagada') {
+      window.history.replaceState({}, '', '/marca')
+      setTimeout(() => setOrdenBanner(false), 5000)
+    }
+  }, [params])
 
   useEffect(() => {
     if (!user || !supabase) return
@@ -73,6 +83,11 @@ export default function BrandDashboard() {
       }[tab]}
       subtitle={'Panel de marca - ' + (brandName || user?.name || 'Marca')}
     >
+      {ordenBanner && (
+        <div className="info-banner" style={{ background: 'var(--verde)', color: '#fff', marginBottom: 16 }}>
+          <strong>¡Pago recibido!</strong> Tu orden está activa y los fondos quedaron en escrow. La creadora verá la orden en su panel.
+        </div>
+      )}
       {tab !== 'chat' && <UrgentBanner role="brand" onJumpToOrders={() => setTab('orders')} />}
       {tab === 'campaigns'  && <Campaigns brandId={user?.id} plan={plan} onOpenApplicants={() => setTab('applicants')} />}
       {tab === 'applicants' && (
@@ -792,91 +807,70 @@ function ChatConversation({ userId, ctx, onBack, onCreated, isBrand }) {
 }
 
 function CreateOrderModal({ open, onClose, onCreated, campanaId, creadoId, defaultVideos = 3, defaultBase = 1500 }) {
-  const { addOrder } = useStore()
-  const [base, setBase]       = useState(defaultBase)
-  const [videos, setVideos]   = useState(defaultVideos)
-  const [deadline, setDeadline] = useState('2026-06-04')
-  const [step, setStep]       = useState('form')
+  const { user }                    = useAuth()
+  const [base, setBase]             = useState(defaultBase)
+  const [videos, setVideos]         = useState(defaultVideos)
+  const [deadline, setDeadline]     = useState('2026-06-15')
+  const [loading, setLoading]       = useState(false)
+  const [err, setErr]               = useState('')
   const q      = quote(base || 0)
   const tooLow = base < MIN_VIDEO_PRICE
 
-  const reset = () => { setStep('form'); setBase(defaultBase); setVideos(defaultVideos); onClose() }
+  const reset = () => { setBase(defaultBase); setVideos(defaultVideos); setErr(''); onClose() }
 
   const pay = async () => {
-    await addOrder({ videos, base, deadline, campana_id: campanaId ?? null, creadora_id: creadoId ?? null })
-    setStep('done')
+    if (!user) return
+    setLoading(true)
+    setErr('')
+    const { data, error } = await supabase.functions.invoke('pagar-orden', {
+      body: {
+        videos,
+        base,
+        deadline,
+        campana_id:   campanaId   ?? null,
+        creadora_id:  creadoId    ?? null,
+        marca_id:     user.id,
+        email_marca:  user.email,
+        nombre_marca: user.name,
+      },
+    })
+    setLoading(false)
+    if (error || !data?.url) {
+      setErr('No se pudo iniciar el pago. Intenta de nuevo.')
+      return
+    }
+    window.location.href = data.url
   }
-
-  const finish = () => { reset(); onCreated && onCreated() }
 
   return (
     <Modal
       open={open}
       onClose={reset}
-      title={
-        step === 'form'     ? 'Crear orden' :
-        step === 'checkout' ? 'Checkout Stripe (escrow)' :
-                              'Orden activa'
-      }
+      title="Crear orden"
       footer={
-        step === 'form' ? (
-          <button className="btn btn-grad btn-sm" disabled={tooLow} onClick={() => setStep('checkout')}>
-            Continuar al pago
-          </button>
-        ) : step === 'checkout' ? (
-          <button className="btn btn-grad btn-sm" onClick={pay}>
-            Pagar ${q.brandPays.toLocaleString()} MXN
-          </button>
-        ) : (
-          <button className="btn btn-grad btn-sm" onClick={finish}>Ir a Ordenes</button>
-        )
+        <button className="btn btn-grad btn-sm" disabled={tooLow || loading} onClick={pay}>
+          {loading ? 'Generando pago…' : `Pagar $${q.brandPays.toLocaleString()} MXN`}
+        </button>
       }
     >
-      {step === 'form' && (
-        <>
-          <div className="grid-2">
-            <div className="field">
-              <label>Cantidad de videos</label>
-              <input className="input" type="number" value={videos} onChange={(e) => setVideos(Number(e.target.value))} />
-            </div>
-            <div className="field">
-              <label>Fecha limite</label>
-              <input className="input" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
-            </div>
-          </div>
-          <div className="field">
-            <label>Precio base totalizado (MXN)</label>
-            <input className="input" type="number" value={base} onChange={(e) => setBase(Number(e.target.value))} />
-            {tooLow && <p className="err">El acuerdo no puede ser menor a ${MIN_VIDEO_PRICE} MXN por video (PRD 5.2).</p>}
-          </div>
-          <QuoteBox q={q} />
-        </>
-      )}
-      {step === 'checkout' && (
-        <div className="checkout">
-          <div className="stripe-badge">Pago seguro - <strong>Stripe</strong></div>
-          <div className="field">
-            <label>Numero de tarjeta</label>
-            <input className="input" placeholder="4242 4242 4242 4242" />
-          </div>
-          <div className="grid-2">
-            <div className="field"><label>Vence</label><input className="input" placeholder="MM/AA" /></div>
-            <div className="field"><label>CVC</label><input className="input" placeholder="123" /></div>
-          </div>
-          <QuoteBox q={q} />
-          <p className="hint">El capital se congela en garantia (escrow) y se libera al aprobar el contenido.</p>
+      <div className="grid-2">
+        <div className="field">
+          <label>Cantidad de videos</label>
+          <input className="input" type="number" min={1} value={videos} onChange={(e) => setVideos(Number(e.target.value))} />
         </div>
-      )}
-      {step === 'done' && (
-        <div className="order-done">
-          <div className="done-check"><Icon name="check" size={28} color="var(--verde)" strokeWidth={3} /></div>
-          <h3 style={{ color: 'var(--verde)' }}>Fondos en escrow</h3>
-          <p className="text-muted">
-            La orden paso a <strong>Colaboracion en curso</strong>.
-            ${q.brandPays.toLocaleString()} MXN quedaron congelados de forma segura.
-          </p>
+        <div className="field">
+          <label>Fecha límite</label>
+          <input className="input" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
         </div>
-      )}
+      </div>
+      <div className="field">
+        <label>Precio base totalizado (MXN)</label>
+        <input className="input" type="number" value={base} onChange={(e) => setBase(Number(e.target.value))} />
+        {tooLow && <p className="err">El acuerdo no puede ser menor a ${MIN_VIDEO_PRICE} MXN por video (PRD 5.2).</p>}
+      </div>
+      <QuoteBox q={q} />
+      <p className="hint">Al continuar serás redirigido a Stripe. El capital queda congelado en escrow hasta que apruebes el contenido.</p>
+      {err && <p className="err" style={{ marginTop: 8 }}>{err}</p>}
     </Modal>
   )
 }
