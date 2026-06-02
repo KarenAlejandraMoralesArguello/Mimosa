@@ -7,6 +7,7 @@ import { useStore } from '../context/StoreContext.jsx'
 import { supabase } from '../lib/supabase.js'
 import UrgentBanner from '../components/UrgentBanner.jsx'
 import { MARKET_STYLES, STATUS_MAP, quote, MIN_VIDEO_PRICE } from '../data/mock.js'
+import { sendEmail } from '../lib/email.js'
 
 const GRADS = [
   'var(--grad-naranja-solar)',
@@ -484,6 +485,32 @@ function ApplyModal({ campaign, onClose, onApplied }) {
       setLoading(false)
       return
     }
+
+    // Email a la creadora: confirmación de postulación
+    sendEmail('postulacion_recibida', user.email, {
+      nombre:  user.name,
+      campana: campaign.title,
+      marca:   campaign.brand,
+    })
+
+    // Email a la marca: tiene nueva postulante
+    // Buscamos el email de la marca por campana_id
+    supabase
+      .from('campanas')
+      .select('marca_id, perfiles!marca_id ( email, nombre )')
+      .eq('id', campaign.id)
+      .single()
+      .then(({ data: camp }) => {
+        const email = camp?.perfiles?.email
+        const nombre = camp?.perfiles?.nombre
+        if (email) {
+          sendEmail('nueva_postulante', email, {
+            nombre:   nombre ?? 'Marca',
+            campana:  campaign.title,
+            creadora: user.name,
+          })
+        }
+      })
 
     setPropuesta('')
     setPrice(500)

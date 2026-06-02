@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import Logo from '../components/Logo.jsx'
+import { sendEmail } from '../lib/email.js'
 import Icon from '../components/Icon.jsx'
 import PasswordInput from '../components/PasswordInput.jsx'
 import { PLANS } from '../data/mock.js'
@@ -131,6 +132,7 @@ function BrandForm({ onSwitch }) {
 
     if (!data.session) { navigate('/login?confirmar=1'); return }
     await login(data.session)
+    sendEmail('bienvenida_marca', form.email, { nombre: form.company })
     navigate('/marca')
   }
 
@@ -277,6 +279,7 @@ function CreatorForm({ onSwitch }) {
 
     if (!data.session) { navigate('/login?confirmar=1'); return }
     await login(data.session)
+    sendEmail('bienvenida_creadora', form.email, { nombre: form.name })
     navigate('/creadora')
   }
 

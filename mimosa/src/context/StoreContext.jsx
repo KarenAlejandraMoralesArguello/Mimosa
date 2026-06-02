@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useAuth } from './AuthContext.jsx'
+import { sendEmail } from '../lib/email.js'
 
 // Contexto de órdenes — conectado a Supabase.
 // Expone el mismo shape que usaba el demo (orders, addOrder, etc.)
@@ -161,8 +162,28 @@ export function StoreProvider({ children }) {
       .eq('id', id)
 
     if (error) { console.error('approveOrder:', error); return }
+
+    // Email a la creadora: su orden fue completada y el pago liberado
+    const orden = orders.find((o) => o.id === id)
+    if (orden?.creadora_id) {
+      supabase
+        .from('perfiles')
+        .select('email, nombre')
+        .eq('id', orden.creadora_id)
+        .single()
+        .then(({ data: p }) => {
+          if (p?.email) {
+            sendEmail('orden_completada', p.email, {
+              nombre:  p.nombre ?? '',
+              campana: orden.campaign ?? 'tu colaboración',
+              monto:   String(orden.creatorGets ?? orden.base),
+            })
+          }
+        })
+    }
+
     setOrders((prev) => prev.map((o) => o.id === id ? { ...o, status: 'completado' } : o))
-  }, [])
+  }, [orders])
 
   // Creadora entrega contenido (URL externa).
   const deliverOrder = useCallback(async (id, url) => {

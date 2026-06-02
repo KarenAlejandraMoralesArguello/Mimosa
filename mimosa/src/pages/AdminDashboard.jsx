@@ -5,6 +5,7 @@ import Icon from '../components/Icon.jsx'
 import { useStore } from '../context/StoreContext.jsx'
 import { supabase } from '../lib/supabase.js'
 import { STATUS_MAP } from '../data/mock.js'
+import { sendEmail } from '../lib/email.js'
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState('creators')
@@ -76,10 +77,7 @@ function Creators() {
       .update({ status: 'verificado' })
       .eq('perfil_id', creadora.perfil_id)
 
-    // Notificar por email (no bloquea si la Edge Function no está configurada)
-    supabase.functions.invoke('notificar-validacion', {
-      body: { email: creadora.perfiles?.email, nombre: creadora.perfiles?.nombre, tipo: 'aprobado' },
-    }).catch(() => {})
+    sendEmail('perfil_verificado', creadora.perfiles?.email, { nombre: creadora.perfiles?.nombre ?? '' })
 
     setList((prev) => prev.filter((c) => c.perfil_id !== creadora.perfil_id))
   }
@@ -101,15 +99,10 @@ function Creators() {
       mensaje:     feedback,
     })
 
-    // Notificar por email con el feedback
-    supabase.functions.invoke('notificar-validacion', {
-      body: {
-        email:    reject.perfiles?.email,
-        nombre:   reject.perfiles?.nombre,
-        tipo:     'rechazado',
-        feedback,
-      },
-    }).catch(() => {})
+    sendEmail('perfil_rechazado', reject.perfiles?.email, {
+      nombre: reject.perfiles?.nombre ?? '',
+      motivo: feedback,
+    })
 
     setList((prev) => prev.filter((c) => c.perfil_id !== reject.perfil_id))
     setReject(null)
