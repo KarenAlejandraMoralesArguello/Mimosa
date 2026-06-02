@@ -202,7 +202,7 @@ function CampaignReview({ onCountChange }) {
     setLoading(true)
     const { data, error } = await supabase
       .from('campanas')
-      .select('id, titulo, brief, estilo, duracion_seg, videos, presupuesto, created_at, marcas ( nombre_comercial )')
+      .select('id, titulo, brief, estilo, duracion_seg, videos, presupuesto, created_at, marca_id, marcas ( nombre_comercial )')
       .eq('status', 'pendiente')
       .order('created_at', { ascending: true })
     if (!error && data) setList(data)
@@ -218,6 +218,11 @@ function CampaignReview({ onCountChange }) {
     setList((prev) => prev.filter((c) => c.id !== id))
   }
 
+  const getBrandEmail = async (marcaId) => {
+    const { data } = await supabase.from('perfiles').select('email, nombre').eq('id', marcaId).single()
+    return data
+  }
+
   const aprobar = async (campana) => {
     setSaving(true)
     const { error } = await supabase
@@ -228,6 +233,14 @@ function CampaignReview({ onCountChange }) {
     if (!error) {
       remove(campana.id)
       setDetail(null)
+      // Email a la marca
+      const perfil = await getBrandEmail(campana.marca_id)
+      if (perfil?.email) {
+        sendEmail('campana_aprobada', perfil.email, {
+          nombre:  perfil.nombre ?? '',
+          campana: campana.titulo,
+        })
+      }
     }
   }
 
@@ -240,9 +253,20 @@ function CampaignReview({ onCountChange }) {
       .eq('id', reject.id)
     setSaving(false)
     if (!error) {
+      const campana = reject
+      const notaFinal = note.trim()
       remove(reject.id)
       setReject(null)
       setNote('')
+      // Email a la marca
+      const perfil = await getBrandEmail(campana.marca_id)
+      if (perfil?.email) {
+        sendEmail('campana_rechazada', perfil.email, {
+          nombre:  perfil.nombre ?? '',
+          campana: campana.titulo,
+          motivo:  notaFinal || '',
+        })
+      }
     }
   }
 
