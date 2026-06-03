@@ -221,6 +221,7 @@ export const STATUS_MAP = {
   en_validacion: { label: 'En validación', badge: 'badge-solar' },
   entregado: { label: 'Entregado · pendiente revisión', badge: 'badge-azul' },
   completado: { label: 'Completado', badge: 'badge-verde' },
-  cancelado: { label: 'Cancelada / fallida', badge: 'badge-muted' },
-  verificado: { label: 'Verificada', badge: 'badge-verde' },
+  cancelado:       { label: 'Cancelada / fallida',   badge: 'badge-muted' },
+  verificado:      { label: 'Verificada',             badge: 'badge-verde' },
+  pendiente_pago:  { label: 'Pago pendiente',         badge: 'badge-solar' },
 }

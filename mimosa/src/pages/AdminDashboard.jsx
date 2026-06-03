@@ -531,7 +531,7 @@ function CampaignReview({ onCountChange }) {
 /* ---- ARBITRAJE ---- */
 
 function Arbitration() {
-  const { orders, approveOrder, failOrder, refetch } = useStore()
+  const { orders, loading, approveOrder, failOrder, refetch } = useStore()
   const [resolveTarget, setResolveTarget] = useState(null)
   const [chatTarget, setChatTarget] = useState(null)
   const [chatMessages, setChatMessages] = useState([])
@@ -608,6 +608,19 @@ function Arbitration() {
     } finally {
       setSaving(false)
     }
+  }
+
+  if (loading) {
+    return <div className="card card-pad center"><p className="text-muted">Cargando ordenes...</p></div>
+  }
+
+  if (orders.length === 0) {
+    return (
+      <div className="card card-pad center inline-ic">
+        <Icon name="scale" size={16} color="var(--violeta)" strokeWidth={2.5} />
+        <p className="text-muted" style={{ margin: 0 }}>No hay ordenes activas para arbitrar.</p>
+      </div>
+    )
   }
 
   return (
