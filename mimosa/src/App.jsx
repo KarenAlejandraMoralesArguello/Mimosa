@@ -67,7 +67,7 @@ function ProtectedRoute({ role, children }) {
   if (!user) return <Navigate to="/login" replace />
 
   // 3. Cuenta suspendida por admin
-  if (user.banned) return <Navigate to="/login" replace state={{ banned: true }} />
+  if (user.banned) return <Navigate to="/login" replace state={{ banned: true, banReason: user.banReason }} />
 
   // 4. Rol incorrecto para esta ruta
   if (role && user.role !== role) {

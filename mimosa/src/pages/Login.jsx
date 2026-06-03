@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import Logo from '../components/Logo.jsx'
@@ -13,8 +13,11 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
   const needsConfirm = searchParams.get('confirmar') === '1'
+  const isBanned   = location.state?.banned
+  const banReason  = location.state?.banReason
 
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
@@ -74,6 +77,54 @@ export default function Login() {
 
     await login(data.session)
     navigate(HOME[perfil.rol])
+  }
+
+  if (isBanned) {
+    return (
+      <div className="auth">
+        <div className="auth-aside">
+          <Link to="/"><Logo light /></Link>
+          <h2>Cuenta suspendida.</h2>
+          <p>Si crees que es un error, escríbenos y lo resolvemos.</p>
+          <div className="auth-aside-art" />
+        </div>
+        <div className="auth-form-wrap">
+          <div className="auth-form">
+            <h1>Tu cuenta fue suspendida</h1>
+            <div className="info-banner" style={{ borderColor: 'var(--naranja, #f97316)', background: 'rgba(249,115,22,.08)', marginBottom: 20 }}>
+              <strong>Acceso bloqueado.</strong> Esta cuenta no puede iniciar sesión en este momento.
+            </div>
+            {banReason && (
+              <div style={{ marginBottom: 20 }}>
+                <p className="text-muted" style={{ fontSize: 13, marginBottom: 4 }}>Motivo indicado por el equipo Mimosa:</p>
+                <p style={{ fontStyle: 'italic' }}>"{banReason}"</p>
+              </div>
+            )}
+            <p className="text-muted" style={{ marginBottom: 20 }}>
+              Si crees que esto es un error o quieres apelar la decisión, escríbenos directamente por WhatsApp o correo y revisamos tu caso.
+            </p>
+            <a
+              className="btn btn-grad btn-block"
+              href="https://wa.me/528125706387?text=Hola%20Mimosa%2C%20mi%20cuenta%20fue%20suspendida%20y%20quisiera%20apelar%20la%20decision"
+              target="_blank"
+              rel="noreferrer"
+              style={{ marginBottom: 12 }}
+            >
+              Contactar por WhatsApp
+            </a>
+            <a
+              className="btn btn-ghost btn-block"
+              href="mailto:soporte@mimosacolab.com?subject=Apelación%20de%20suspensión"
+            >
+              Enviar correo a soporte
+            </a>
+            <p className="auth-alt" style={{ marginTop: 24 }}>
+              <Link to="/">Volver al inicio</Link>
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

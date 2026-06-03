@@ -71,13 +71,9 @@ export function AuthProvider({ children }) {
           break
 
         case 'TOKEN_REFRESHED':
-          // El JWT fue renovado automáticamente — no necesita recargar el perfil,
-          // solo actualiza los metadatos de sesión si los estás usando.
           break
 
         case 'SIGNED_OUT':
-          // Se dispara cuando: el usuario hace logout, el refresh token expiró,
-          // o la sesión fue revocada desde el dashboard de Supabase.
           setUser(null)
           break
 
@@ -88,6 +84,27 @@ export function AuthProvider({ children }) {
 
     return () => subscription.unsubscribe()
   }, [loadProfile])
+
+  // Suscripción Realtime: si el admin suspende al usuario mientras está logueado,
+  // se cierra la sesión inmediatamente sin esperar a que recargue la página.
+  useEffect(() => {
+    if (!supabase || !user || user === 'loading') return
+
+    const channel = supabase
+      .channel(`ban-watch-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'perfiles', filter: `id=eq.${user.id}` },
+        (payload) => {
+          if (payload.new?.banned) {
+            supabase.auth.signOut()
+          }
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [user])
 
   const login = useCallback(async (session) => {
     await loadProfile(session)
