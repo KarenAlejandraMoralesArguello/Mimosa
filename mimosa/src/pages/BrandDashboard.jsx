@@ -688,11 +688,14 @@ function ChatConversation({ userId, ctx, onBack, onCreated, isBrand }) {
     }
     setMessages((prev) => [...prev, optimistic])
     setText('')
-    await supabase.from('mensajes').insert({
+    const { data: inserted } = await supabase.from('mensajes').insert({
       chat_id:        ctx.chatId,
       from_perfil_id: userId,
       texto:          optimistic.texto,
-    })
+    }).select('id').single()
+    if (inserted?.id) {
+      setMessages((prev) => prev.map((m) => m.id === optimistic.id ? { ...m, id: inserted.id } : m))
+    }
     if (recipient?.email) {
       sendEmail('nuevo_mensaje', recipient.email, {
         nombre:    recipient.nombre ?? '',
@@ -721,11 +724,14 @@ function ChatConversation({ userId, ctx, onBack, onCreated, isBrand }) {
       created_at: new Date().toISOString(),
     }
     setMessages((prev) => [...prev, optimistic])
-    await supabase.from('mensajes').insert({
+    const { data: insertedFile } = await supabase.from('mensajes').insert({
       chat_id:        ctx.chatId,
       from_perfil_id: userId,
       archivo_url:    publicUrl,
-    })
+    }).select('id').single()
+    if (insertedFile?.id) {
+      setMessages((prev) => prev.map((m) => m.id === optimistic.id ? { ...m, id: insertedFile.id } : m))
+    }
     setUploading(false)
     e.target.value = ''
   }
