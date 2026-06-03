@@ -781,11 +781,12 @@ function Arbitration() {
 /* ---- CUENTAS (baneo, PRD 7.2) ---- */
 
 function Accounts() {
-  const [accounts, setAccounts]   = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [filter, setFilter]       = useState('all')
-  const [search, setSearch]       = useState('')
-  const [banTarget, setBanTarget] = useState(null)
+  const [accounts, setAccounts]     = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [filter, setFilter]         = useState('all')
+  const [search, setSearch]         = useState('')
+  const [banTarget, setBanTarget]   = useState(null)
+  const [detailTarget, setDetail]   = useState(null)
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true)
@@ -879,6 +880,7 @@ function Accounts() {
                 )}
               </div>
               <div className="account-row-actions">
+                <button className="btn btn-ghost btn-sm" onClick={() => setDetail(a)}>Ver perfil</button>
                 {a.banned
                   ? <button className="btn btn-ghost btn-sm" onClick={() => onUnban(a)}>Reactivar</button>
                   : <button className="btn btn-ghost btn-sm btn-warn" onClick={() => setBanTarget(a)}>Suspender</button>
@@ -890,6 +892,7 @@ function Accounts() {
       )}
 
       <BanModal target={banTarget} onClose={() => setBanTarget(null)} onConfirm={onBan} />
+      <AccountDetailModal target={detailTarget} onClose={() => setDetail(null)} />
     </>
   )
 }
@@ -927,6 +930,150 @@ function BanModal({ target, onClose, onConfirm }) {
           placeholder="Ej. intento de desviar transaccion fuera de Stripe..."
         />
       </div>
+    </Modal>
+  )
+}
+
+/* ---- DETALLE DE CUENTA ---- */
+
+const PLAN_LABEL = { foru: 'ForU (gratuito)', starter: 'Starter', pro: 'Pro' }
+const CREATOR_STATUS_LABEL = {
+  borrador:      { label: 'Borrador',      color: 'var(--line)' },
+  en_validacion: { label: 'En validacion', color: 'var(--solar)' },
+  verificado:    { label: 'Verificada',    color: 'var(--verde)' },
+  rechazado:     { label: 'Rechazada',     color: 'var(--naranja, #f97316)' },
+}
+
+function AccountDetailModal({ target, onClose }) {
+  const [detail, setDetail] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!target) { setDetail(null); return }
+    setLoading(true)
+    setDetail(null)
+
+    const fetchDetail = async () => {
+      if (target.rol === 'creator') {
+        const [{ data: creadora }, { count: postCount }, { count: ordenCount }] = await Promise.all([
+          supabase
+            .from('creadoras')
+            .select('portafolio_url, status, stripe_account_id, created_at')
+            .eq('perfil_id', target.id)
+            .single(),
+          supabase
+            .from('postulaciones')
+            .select('*', { count: 'exact', head: true })
+            .eq('creadora_id', target.id),
+          supabase
+            .from('ordenes')
+            .select('*', { count: 'exact', head: true })
+            .eq('creadora_id', target.id),
+        ])
+        setDetail({ type: 'creator', creadora, postCount: postCount ?? 0, ordenCount: ordenCount ?? 0 })
+      } else {
+        const [{ data: marca }, { count: campCount }, { count: ordenCount }] = await Promise.all([
+          supabase
+            .from('marcas')
+            .select('nombre_comercial, plan, trial_ends_at, stripe_customer_id, created_at')
+            .eq('perfil_id', target.id)
+            .single(),
+          supabase
+            .from('campanas')
+            .select('*', { count: 'exact', head: true })
+            .eq('marca_id', target.id),
+          supabase
+            .from('ordenes')
+            .select('*', { count: 'exact', head: true })
+            .eq('marca_id', target.id),
+        ])
+        setDetail({ type: 'brand', marca, campCount: campCount ?? 0, ordenCount: ordenCount ?? 0 })
+      }
+      setLoading(false)
+    }
+
+    fetchDetail()
+  }, [target])
+
+  if (!target) return null
+
+  const Row = ({ label, value }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--surface)', fontSize: 14 }}>
+      <span className="text-muted">{label}</span>
+      <strong style={{ textAlign: 'right', maxWidth: '60%', wordBreak: 'break-all' }}>{value}</strong>
+    </div>
+  )
+
+  return (
+    <Modal
+      open={!!target}
+      onClose={onClose}
+      title={target.rol === 'creator' ? 'Perfil de creadora' : 'Perfil de marca'}
+      footer={<button className="btn btn-ghost btn-sm" onClick={onClose}>Cerrar</button>}
+    >
+      {/* Cabecera */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+        <div className="dash-avatar lg">{(target.nombre || '?').charAt(0)}</div>
+        <div>
+          <strong style={{ fontSize: 16 }}>{target.nombre}</strong>
+          <div className="text-muted" style={{ fontSize: 13 }}>{target.email}</div>
+          <div style={{ marginTop: 4 }}>
+            {target.banned && (
+              <span className="badge badge-muted" style={{ color: 'var(--naranja)' }}>
+                <span className="dot" /> Suspendida
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {loading && <p className="text-muted" style={{ textAlign: 'center', padding: 16 }}>Cargando...</p>}
+
+      {!loading && detail?.type === 'creator' && (() => {
+        const c = detail.creadora
+        const st = CREATOR_STATUS_LABEL[c?.status] ?? { label: c?.status, color: 'var(--text)' }
+        return (
+          <>
+            <Row label="Estado de validacion" value={<span style={{ color: st.color }}>{st.label}</span>} />
+            <Row label="Registro" value={target.created_at ? new Date(target.created_at).toLocaleDateString('es-MX') : '—'} />
+            <Row label="Postulaciones" value={detail.postCount} />
+            <Row label="Ordenes" value={detail.ordenCount} />
+            {c?.stripe_account_id && <Row label="Stripe Connect" value={c.stripe_account_id} />}
+            {target.ban_reason && <Row label="Motivo suspension" value={target.ban_reason} />}
+            {c?.portafolio_url && (
+              <div style={{ marginTop: 16 }}>
+                <a
+                  className="btn btn-ghost btn-sm"
+                  href={c.portafolio_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  <Icon name="external" size={14} /> Ver portafolio
+                </a>
+              </div>
+            )}
+          </>
+        )
+      })()}
+
+      {!loading && detail?.type === 'brand' && (() => {
+        const m = detail.marca
+        return (
+          <>
+            {m?.nombre_comercial && <Row label="Nombre comercial" value={m.nombre_comercial} />}
+            <Row label="Plan" value={PLAN_LABEL[m?.plan] ?? m?.plan ?? '—'} />
+            <Row label="Registro" value={target.created_at ? new Date(target.created_at).toLocaleDateString('es-MX') : '—'} />
+            {m?.trial_ends_at && (
+              <Row label="Trial hasta" value={new Date(m.trial_ends_at).toLocaleDateString('es-MX')} />
+            )}
+            <Row label="Campanas" value={detail.campCount} />
+            <Row label="Ordenes" value={detail.ordenCount} />
+            {m?.stripe_customer_id && <Row label="Stripe Customer" value={m.stripe_customer_id} />}
+            {target.ban_reason && <Row label="Motivo suspension" value={target.ban_reason} />}
+          </>
+        )
+      })()}
     </Modal>
   )
 }
