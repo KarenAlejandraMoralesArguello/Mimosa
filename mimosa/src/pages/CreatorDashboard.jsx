@@ -270,6 +270,8 @@ function Marketplace({ locked }) {
   const [query, setQuery]         = useState('')
   const [style, setStyle]         = useState('all')
   const [sort, setSort]           = useState('deadline')
+  const [minBudget, setMinBudget] = useState(0)
+  const [maxDuration, setMaxDuration] = useState(0)
   const [page, setPage]           = useState(1)
 
   const fetchCampaigns = useCallback(async () => {
@@ -324,6 +326,8 @@ function Marketplace({ locked }) {
   const q        = query.trim().toLowerCase()
   const filtered = campaigns.filter((c) => {
     if (style !== 'all' && c.style !== style) return false
+    if (minBudget > 0 && c.refBudget < minBudget) return false
+    if (maxDuration > 0 && c.duration > maxDuration) return false
     if (!q) return true
     return c.title.toLowerCase().includes(q) || c.brand.toLowerCase().includes(q)
   })
@@ -360,6 +364,19 @@ function Marketplace({ locked }) {
             <option value="deadline">Vence antes</option>
             <option value="budget-desc">Presupuesto mayor</option>
             <option value="budget-asc">Presupuesto menor</option>
+          </select>
+          <select className="select" value={minBudget} onChange={(e) => { setMinBudget(Number(e.target.value)); setPage(1) }}>
+            <option value={0}>Cualquier presupuesto</option>
+            <option value={1000}>+$1,000 MXN</option>
+            <option value={3000}>+$3,000 MXN</option>
+            <option value={5000}>+$5,000 MXN</option>
+            <option value={10000}>+$10,000 MXN</option>
+          </select>
+          <select className="select" value={maxDuration} onChange={(e) => { setMaxDuration(Number(e.target.value)); setPage(1) }}>
+            <option value={0}>Cualquier duración</option>
+            <option value={15}>Hasta 15s</option>
+            <option value={30}>Hasta 30s</option>
+            <option value={60}>Hasta 60s</option>
           </select>
         </div>
       </div>

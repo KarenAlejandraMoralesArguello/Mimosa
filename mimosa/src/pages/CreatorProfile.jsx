@@ -94,6 +94,12 @@ export default function CreatorProfile() {
                 <strong>{profile.ordenes_completadas}</strong>
                 <span>Órdenes completadas</span>
               </div>
+              {profile.calificacion != null && (
+                <div className="cp-stat">
+                  <strong>⭐ {profile.calificacion}</strong>
+                  <span>Calificación</span>
+                </div>
+              )}
               <div className="cp-stat">
                 <strong>
                   {new Date(profile.miembro_desde).toLocaleDateString('es-MX', {

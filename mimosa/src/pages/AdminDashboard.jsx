@@ -8,7 +8,7 @@ import { STATUS_MAP } from '../data/mock.js'
 import { sendEmail } from '../lib/email.js'
 
 export default function AdminDashboard() {
-  const [tab, setTab] = useState('creators')
+  const [tab, setTab] = useState('analytics')
   const [pendingCount, setPendingCount] = useState(0)
 
   // Cargar conteo inicial de campanas pendientes para el badge del nav.
@@ -22,10 +22,11 @@ export default function AdminDashboard() {
   }, [])
 
   const nav = [
-    { id: 'creators',    label: 'Validar creadoras',    icon: 'check' },
-    { id: 'campaigns',   label: 'Pre-aprobar campanas',  icon: 'megaphone', badge: pendingCount || undefined },
-    { id: 'arbitration', label: 'Arbitraje',             icon: 'scale' },
-    { id: 'accounts',    label: 'Cuentas',               icon: 'users' },
+    { id: 'analytics',   label: 'Analytics',             icon: 'money' },
+    { id: 'creators',    label: 'Validar creadoras',      icon: 'check' },
+    { id: 'campaigns',   label: 'Pre-aprobar campanas',   icon: 'megaphone', badge: pendingCount || undefined },
+    { id: 'arbitration', label: 'Arbitraje',              icon: 'scale' },
+    { id: 'accounts',    label: 'Cuentas',                icon: 'users' },
   ]
 
   return (
@@ -35,6 +36,7 @@ export default function AdminDashboard() {
       onNavigate={setTab}
       accent="var(--violeta)"
       title={{
+        analytics:   'Analytics',
         creators:    'Validacion de creadoras',
         campaigns:   'Pre-aprobacion de campanas',
         arbitration: 'Panel de arbitraje',
@@ -42,11 +44,146 @@ export default function AdminDashboard() {
       }[tab]}
       subtitle="Panel de administracion - Mimosa Colab Club"
     >
+      {tab === 'analytics'   && <Analytics />}
       {tab === 'creators'    && <Creators />}
       {tab === 'campaigns'   && <CampaignReview onCountChange={setPendingCount} />}
       {tab === 'arbitration' && <Arbitration />}
       {tab === 'accounts'    && <Accounts />}
     </DashboardShell>
+  )
+}
+
+/* ---- ANALYTICS ---- */
+
+const PLAN_PRICE = { foru: 499, starter: 799, pro: 1199 }
+
+function Analytics() {
+  const [data, setData]     = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!supabase) return
+    const inicioMes = new Date()
+    inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0)
+
+    Promise.all([
+      // Suscripciones activas por plan (MRR)
+      supabase.from('suscripciones').select('plan').eq('status', 'active'),
+      // Órdenes completadas este mes (ingresos Mimosa = base × 0.20)
+      supabase.from('ordenes').select('base_mxn').eq('status', 'completado').gte('created_at', inicioMes.toISOString()),
+      // Escrow en vuelo
+      supabase.from('ordenes').select('brand_pays').eq('status', 'en_curso'),
+      // Creadoras por status
+      supabase.from('creadoras').select('status'),
+      // Campañas por status
+      supabase.from('campanas').select('status'),
+      // Total usuarios por rol
+      supabase.from('perfiles').select('rol'),
+      // Órdenes totales este mes por status
+      supabase.from('ordenes').select('status').gte('created_at', inicioMes.toISOString()),
+    ]).then(([subs, ordenesCompletadas, escrow, creadoras, campanas, perfiles, ordenesMes]) => {
+      // MRR
+      const planCount = { foru: 0, starter: 0, pro: 0 }
+      ;(subs.data ?? []).forEach((s) => { if (planCount[s.plan] !== undefined) planCount[s.plan]++ })
+      const mrr = Object.entries(planCount).reduce((sum, [plan, count]) => sum + (PLAN_PRICE[plan] ?? 0) * count, 0)
+
+      // Revenue de Mimosa este mes (20% del base)
+      const revenueMes = (ordenesCompletadas.data ?? []).reduce((sum, o) => sum + Number(o.base_mxn) * 0.20, 0)
+
+      // Escrow en vuelo
+      const escrowTotal = (escrow.data ?? []).reduce((sum, o) => sum + Number(o.brand_pays), 0)
+
+      // Creadoras
+      const creaCount = { verificado: 0, en_validacion: 0, borrador: 0, rechazado: 0 }
+      ;(creadoras.data ?? []).forEach((c) => { if (creaCount[c.status] !== undefined) creaCount[c.status]++ })
+
+      // Campañas
+      const campCount = {}
+      ;(campanas.data ?? []).forEach((c) => { campCount[c.status] = (campCount[c.status] ?? 0) + 1 })
+
+      // Perfiles
+      const rolCount = {}
+      ;(perfiles.data ?? []).forEach((p) => { rolCount[p.rol] = (rolCount[p.rol] ?? 0) + 1 })
+
+      // Órdenes mes
+      const ordenMes = {}
+      ;(ordenesMes.data ?? []).forEach((o) => { ordenMes[o.status] = (ordenMes[o.status] ?? 0) + 1 })
+
+      setData({ mrr, revenueMes, escrowTotal, planCount, creaCount, campCount, rolCount, ordenMes })
+      setLoading(false)
+    })
+  }, [])
+
+  if (loading) return <div className="card card-pad center"><p className="text-muted">Calculando métricas...</p></div>
+  if (!data)   return null
+
+  const StatCard = ({ label, value, sub, color }) => (
+    <div className="card card-pad" style={{ borderTop: `3px solid ${color ?? 'var(--rosa)'}` }}>
+      <p className="text-muted" style={{ fontSize: 13, margin: '0 0 4px' }}>{label}</p>
+      <p style={{ fontSize: 28, fontWeight: 800, margin: 0, color: color ?? 'var(--text)' }}>{value}</p>
+      {sub && <p className="text-muted" style={{ fontSize: 12, margin: '4px 0 0' }}>{sub}</p>}
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+      {/* KPIs principales */}
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 16 }}>
+        <StatCard label="MRR (suscripciones)" value={`$${data.mrr.toLocaleString('es-MX')} MXN`} sub={`${Object.values(data.planCount).reduce((a,b)=>a+b,0)} marcas activas`} color="var(--violeta)" />
+        <StatCard label="Ingresos Mimosa (este mes)" value={`$${Math.round(data.revenueMes).toLocaleString('es-MX')} MXN`} sub="20% de órdenes completadas" color="var(--rosa)" />
+        <StatCard label="Escrow en vuelo" value={`$${Math.round(data.escrowTotal).toLocaleString('es-MX')} MXN`} sub="órdenes en_curso" color="var(--solar)" />
+        <StatCard label="Total usuarias" value={Object.values(data.rolCount).reduce((a,b)=>a+b,0)} sub={`${data.rolCount.brand ?? 0} marcas · ${data.rolCount.creator ?? 0} creadoras`} color="var(--verde)" />
+      </div>
+
+      {/* Planes de suscripción */}
+      <div className="card card-pad">
+        <h3 style={{ marginTop: 0 }}>Distribución de planes</h3>
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          {Object.entries(PLAN_PRICE).map(([plan, price]) => (
+            <div key={plan} style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>{data.planCount[plan]}</p>
+              <p className="text-muted" style={{ fontSize: 13, margin: '2px 0 0', textTransform: 'capitalize' }}>{plan} · ${price}/mes</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Creadoras y Campañas */}
+      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div className="card card-pad">
+          <h3 style={{ marginTop: 0 }}>Creadoras</h3>
+          {[['verificado','Verificadas','var(--verde)'],['en_validacion','En revisión','var(--solar)'],['borrador','Borrador','var(--line)'],['rechazado','Rechazadas','var(--rojo, #ef4444)']].map(([key, label, color]) => (
+            <div key={key} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--surface)' }}>
+              <span style={{ fontSize: 14, color }}>{label}</span>
+              <strong>{data.creaCount[key] ?? 0}</strong>
+            </div>
+          ))}
+        </div>
+        <div className="card card-pad">
+          <h3 style={{ marginTop: 0 }}>Campañas</h3>
+          {[['activa','Activas','var(--verde)'],['pendiente','En revisión','var(--solar)'],['cerrada','Cerradas','var(--line)'],['rechazada','Rechazadas','var(--rojo, #ef4444)']].map(([key, label, color]) => (
+            <div key={key} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--surface)' }}>
+              <span style={{ fontSize: 14, color }}>{label}</span>
+              <strong>{data.campCount[key] ?? 0}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Órdenes este mes */}
+      <div className="card card-pad">
+        <h3 style={{ marginTop: 0 }}>Órdenes este mes</h3>
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          {[['en_curso','En curso','var(--solar)'],['entregado','Entregadas','var(--violeta)'],['completado','Completadas','var(--verde)'],['cancelado','Canceladas','var(--line)'],['pendiente_pago','Pago pendiente','var(--rojo,#ef4444)']].map(([key,label,color]) => (
+            <div key={key} style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: 22, fontWeight: 800, margin: 0, color }}>{data.ordenMes[key] ?? 0}</p>
+              <p className="text-muted" style={{ fontSize: 12, margin: '2px 0 0' }}>{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 
